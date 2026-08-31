@@ -22,7 +22,7 @@ use client::{Client, ProxySettings, RefreshLlmTokenListener, UserStore, parse_ze
 use collab_ui::channel_view::ChannelView;
 use collections::HashMap;
 use crashes::InitCrashHandler;
-use db::kvp::{GlobalKeyValueStore, KeyValueStore};
+use db::kvp::KeyValueStore;
 use editor::Editor;
 use extension::ExtensionHostProxy;
 use fs::{Fs, RealFs};
@@ -49,7 +49,7 @@ use project::{project_settings::ProjectSettings, trusted_worktrees};
 use recent_projects::{RemoteSettings, open_remote_project};
 use release_channel::{AppCommitSha, AppVersion, ReleaseChannel};
 use session::{AppSession, Session};
-use settings::{BaseKeymap, Settings, SettingsStore, watch_config_file};
+use settings::{Settings, SettingsStore, watch_config_file};
 use smol::future::poll_once;
 use std::{
     cell::RefCell,
@@ -340,7 +340,6 @@ fn main() {
         .with_restart_arguments(restart_arguments);
 
     let app_db = db::AppDatabase::new();
-    let system_id = app.background_executor().spawn(system_id());
     let installation_id = app
         .background_executor()
         .spawn(installation_id(KeyValueStore::from_app_db(&app_db)));
@@ -589,53 +588,39 @@ fn main() {
         client::init(&client, cx);
         feature_flags::FeatureFlagStore::init(cx);
 
-        let system_id = cx.foreground_executor().block_on(system_id).ok();
         let installation_id = cx.foreground_executor().block_on(installation_id).ok();
         let session = cx.foreground_executor().block_on(session);
 
-        let telemetry = client.telemetry();
-        telemetry.start(
-            system_id.as_ref().map(|id| id.to_string()),
-            installation_id.as_ref().map(|id| id.to_string()),
-            session.id().to_owned(),
-            cx,
-        );
-        cx.subscribe(&user_store, {
-            let telemetry = telemetry.clone();
-            move |_, evt: &client::user::Event, cx| match evt {
-                client::user::Event::PrivateUserInfoUpdated => {
-                    if let Some(crash_client) = cx.try_global::<CrashHandler>() {
-                        crashes::set_user_info(
-                            &crash_client.0,
-                            crashes::UserInfo {
-                                metrics_id: telemetry.metrics_id().map(|s| s.to_string()),
-                                is_staff: telemetry.is_staff(),
-                            },
-                        );
-                    }
-                }
-                _ => {}
-            }
-        })
-        .detach();
+        // Telemetry and crash-report account attribution are intentionally disabled in Rdg.
+        // Keep this wiring visible until the telemetry subsystem is removed in a dedicated change.
+        // let telemetry = client.telemetry();
+        // telemetry.start(
+        //     system_id.as_ref().map(|id| id.to_string()),
+        //     installation_id.as_ref().map(|id| id.to_string()),
+        //     session.id().to_owned(),
+        //     cx,
+        // );
+        // cx.subscribe(&user_store, {
+        //     let telemetry = telemetry.clone();
+        //     move |_, evt: &client::user::Event, cx| match evt {
+        //         client::user::Event::PrivateUserInfoUpdated => {
+        //             if let Some(crash_client) = cx.try_global::<CrashHandler>() {
+        //                 crashes::set_user_info(
+        //                     &crash_client.0,
+        //                     crashes::UserInfo {
+        //                         metrics_id: telemetry.metrics_id().map(|s| s.to_string()),
+        //                         is_staff: telemetry.is_staff(),
+        //                     },
+        //                 );
+        //             }
+        //         }
+        //         _ => {}
+        //     }
+        // })
+        // .detach();
 
         let is_new_install = matches!(&installation_id, Some(IdType::New(_)));
 
-        // We should rename these in the future to `first app open`, `first app open for release channel`, and `app open`
-        if let (Some(system_id), Some(installation_id)) = (&system_id, &installation_id) {
-            match (&system_id, &installation_id) {
-                (IdType::New(_), IdType::New(_)) => {
-                    telemetry::event!("App First Opened");
-                    telemetry::event!("App First Opened For Release Channel");
-                }
-                (IdType::Existing(_), IdType::New(_)) => {
-                    telemetry::event!("App First Opened For Release Channel");
-                }
-                (_, IdType::Existing(_)) => {
-                    telemetry::event!("App Opened");
-                }
-            }
-        }
         let app_session = cx.new(|cx| AppSession::new(session, cx));
 
         let app_state = Arc::new(AppState {
@@ -770,11 +755,9 @@ fn main() {
         notifications::init(app_state.client.clone(), app_state.user_store.clone(), cx);
         collab_ui::init(&app_state, cx);
         git_ui::init(cx);
-        feedback::init(cx);
         markdown_preview::init(cx);
         tabular_data_preview::init(cx);
         svg_preview::init(cx);
-        onboarding::init(cx);
         settings_ui::init(cx);
         keymap_editor::init(cx);
         extensions_ui::init(cx);
@@ -829,17 +812,18 @@ fn main() {
             }
         })
         .detach();
-        telemetry::event!(
-            "Settings Changed",
-            setting = "theme",
-            value = cx.theme().name.to_string()
-        );
-        telemetry::event!(
-            "Settings Changed",
-            setting = "keymap",
-            value = BaseKeymap::get_global(cx).to_string()
-        );
-        telemetry.flush_events().detach();
+        // Startup telemetry is disabled in Rdg.
+        // telemetry::event!(
+        //     "Settings Changed",
+        //     setting = "theme",
+        //     value = cx.theme().name.to_string()
+        // );
+        // telemetry::event!(
+        //     "Settings Changed",
+        //     setting = "keymap",
+        //     value = BaseKeymap::get_global(cx).to_string()
+        // );
+        // telemetry.flush_events().detach();
 
         let fs = app_state.fs.clone();
         load_user_themes_in_background(fs.clone(), cx);
@@ -1356,25 +1340,6 @@ fn handle_open_request(request: OpenRequest, app_state: Arc<AppState>, cx: &mut 
         })
         .detach();
     }
-}
-
-async fn authenticate(_client: Arc<Client>, _cx: &AsyncApp) -> Result<()> {
-    Ok(())
-}
-
-async fn system_id() -> Result<IdType> {
-    let key_name = "system_id".to_string();
-    let db = GlobalKeyValueStore::global();
-
-    if let Ok(Some(system_id)) = db.read_kvp(&key_name) {
-        return Ok(IdType::Existing(system_id));
-    }
-
-    let system_id = Uuid::new_v4().to_string();
-
-    db.write_kvp(key_name, system_id.clone()).await?;
-
-    Ok(IdType::New(system_id))
 }
 
 async fn installation_id(db: KeyValueStore) -> Result<IdType> {
