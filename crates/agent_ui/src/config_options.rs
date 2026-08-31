@@ -20,7 +20,7 @@ use ui::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 use util::ResultExt as _;
-use zed_actions::agent::ToggleModelSelector;
+use rdg_actions::agent::ToggleModelSelector;
 
 use crate::ui::documentation_aside_side;
 use crate::{

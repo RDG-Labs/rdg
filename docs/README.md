@@ -1,6 +1,6 @@
-# Zed Docs
+# Rdg Docs
 
-Welcome to Zed's documentation.
+Welcome to Rdg's documentation.
 
 This is built on push to `main` and published automatically to [https://zed.dev/docs](https://zed.dev/docs).
 

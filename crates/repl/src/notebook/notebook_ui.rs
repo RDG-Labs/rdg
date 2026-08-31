@@ -41,8 +41,8 @@ use crate::repl_store::ReplStore;
 use picker::Picker;
 use runtimelib::{ExecuteRequest, JupyterMessage, JupyterMessageContent};
 use ui::PopoverMenuHandle;
-use zed_actions::editor::{MoveDown, MoveUp};
-use zed_actions::notebook::{
+use rdg_actions::editor::{MoveDown, MoveUp};
+use rdg_actions::notebook::{
     AddCodeBlock, AddMarkdownBlock, ClearOutputs, DeleteCell, EnterCommandMode, EnterEditMode,
     InterruptKernel, MoveCellDown, MoveCellUp, NotebookMoveDown, NotebookMoveUp, OpenNotebook,
     RestartKernel, Run, RunAll, RunAndAdvance,

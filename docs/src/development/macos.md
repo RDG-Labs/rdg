@@ -79,7 +79,7 @@ cargo run -p zed --bin zed_visual_test_runner --features visual-tests
 
 ### Baseline Images
 
-Baseline images are stored in `crates/zed/test_fixtures/visual_tests/` but are
+Baseline images are stored in `crates/rdg/test_fixtures/visual_tests/` but are
 **gitignored** to avoid bloating the repository. You must generate them locally
 before running tests.
 

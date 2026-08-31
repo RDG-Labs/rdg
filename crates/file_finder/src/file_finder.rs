@@ -48,7 +48,7 @@ use workspace::{
     MAX_RECENT_SELECTIONS, ModalView, OpenChannelNotesById, OpenOptions, OpenVisible,
     SplitDirection, Workspace, item::PreviewTabsSettings, notifications::NotifyResultExt, pane,
 };
-use zed_actions::search::ToggleIncludeIgnored;
+use rdg_actions::search::ToggleIncludeIgnored;
 
 actions!(
     file_finder,

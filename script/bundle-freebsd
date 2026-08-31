@@ -25,7 +25,7 @@ done
 
 export ZED_BUNDLE=true
 
-channel=$(<crates/zed/RELEASE_CHANNEL)
+channel=$(<crates/rdg/RELEASE_CHANNEL)
 target_dir="${CARGO_TARGET_DIR:-target}"
 
 version="$(script/get-crate-version zed)"
@@ -117,9 +117,9 @@ fi
 
 # Icons
 # mkdir -p "${zed_dir}/share/icons/hicolor/512x512/apps"
-# cp "crates/zed/resources/app-icon$suffix.png" "${zed_dir}/share/icons/hicolor/512x512/apps/zed.png"
+# cp "crates/rdg/resources/app-icon$suffix.png" "${zed_dir}/share/icons/hicolor/512x512/apps/zed.png"
 # mkdir -p "${zed_dir}/share/icons/hicolor/1024x1024/apps"
-# cp "crates/zed/resources/app-icon$suffix@2x.png" "${zed_dir}/share/icons/hicolor/1024x1024/apps/zed.png"
+# cp "crates/rdg/resources/app-icon$suffix@2x.png" "${zed_dir}/share/icons/hicolor/1024x1024/apps/zed.png"
 
 # .desktop
 # export DO_STARTUP_NOTIFY="true"
@@ -127,17 +127,17 @@ fi
 # export APP_ICON="zed"
 # export APP_ARGS="%U"
 # if [[ "$channel" == "preview" ]]; then
-#     export APP_NAME="Zed Preview"
+#     export APP_NAME="Rdg Preview"
 # elif [[ "$channel" == "nightly" ]]; then
-#     export APP_NAME="Zed Nightly"
+#     export APP_NAME="Rdg Nightly"
 # elif [[ "$channel" == "dev" ]]; then
-#     export APP_NAME="Zed Devel"
+#     export APP_NAME="Rdg Devel"
 # else
-#     export APP_NAME="Zed"
+#     export APP_NAME="Rdg"
 # fi
 
 # mkdir -p "${zed_dir}/share/applications"
-# envsubst <"crates/zed/resources/zed.desktop.in" >"${zed_dir}/share/applications/zed$suffix.desktop"
+# envsubst <"crates/rdg/resources/rdg.desktop.in" >"${zed_dir}/share/applications/zed$suffix.desktop"
 # chmod +x "${zed_dir}/share/applications/zed$suffix.desktop"
 
 # Copy generated licenses so they'll end up in archive too

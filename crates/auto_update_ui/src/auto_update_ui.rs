@@ -25,7 +25,7 @@ use workspace::{
     },
     workspace_error::{ErrorAction, ErrorSeverity, WorkspaceError},
 };
-use zed_actions::ShowUpdateNotification;
+use rdg_actions::ShowUpdateNotification;
 
 actions!(
     auto_update,
@@ -240,7 +240,7 @@ fn announcement_for_version(version: &Version, cx: &App) -> Option<AnnouncementC
             secondary_action_label: "Read Documentation".into(),
             primary_action_url: None,
             primary_action_callback: Some(Arc::new(move |window, cx| {
-                window.dispatch_action(Box::new(zed_actions::assistant::FocusAgent), cx);
+                window.dispatch_action(Box::new(rdg_actions::assistant::FocusAgent), cx);
             })),
             on_dismiss: Some(Arc::new(|cx| SkillsAnnouncement::set_dismissed(true, cx))),
             secondary_action_url: Some(zed_urls::skills_docs(cx).into()),

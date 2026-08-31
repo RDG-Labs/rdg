@@ -1125,7 +1125,7 @@ pub async fn derive_paths_with_position(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zed::{open_listener::open_local_workspace, tests::init_test};
+    use crate::rdg::{open_listener::open_local_workspace, tests::init_test};
     use cli::CliResponse;
     use editor::Editor;
     use futures::poll;

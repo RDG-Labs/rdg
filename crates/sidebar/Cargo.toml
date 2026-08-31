@@ -50,7 +50,7 @@ unicode-segmentation.workspace = true
 util.workspace = true
 workspace.workspace = true
 git_ui_core.workspace = true
-zed_actions.workspace = true
+rdg_actions.workspace = true
 
 [dev-dependencies]
 acp_thread = { workspace = true, features = ["test-support"] }

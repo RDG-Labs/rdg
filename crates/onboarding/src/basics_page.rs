@@ -590,7 +590,7 @@ fn render_registry_agent_button(
                 }
             });
             window.dispatch_action(
-                Box::new(zed_actions::agent::SelectAgent {
+                Box::new(rdg_actions::agent::SelectAgent {
                     agent: agent_id.clone(),
                 }),
                 cx,

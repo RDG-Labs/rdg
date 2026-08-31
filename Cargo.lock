@@ -323,7 +323,7 @@ dependencies = [
  "uuid",
  "watch",
  "web_search",
- "zed_env_vars",
+ "rdg_env_vars",
  "zlog",
  "zstd",
 ]
@@ -416,7 +416,7 @@ dependencies = [
  "util",
  "uuid",
  "watch",
- "zed_credentials_provider",
+ "rdg_credentials_provider",
 ]
 
 [[package]]
@@ -560,7 +560,7 @@ dependencies = [
  "vim",
  "watch",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -610,7 +610,7 @@ dependencies = [
  "smallvec",
  "telemetry",
  "ui",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -1441,7 +1441,7 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -2153,7 +2153,7 @@ dependencies = [
  "theme_settings",
  "ui",
  "util",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -2702,7 +2702,7 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -3197,7 +3197,7 @@ dependencies = [
  "util",
  "windows 0.61.3",
  "worktree",
- "zed_credentials_provider",
+ "rdg_credentials_provider",
 ]
 
 [[package]]
@@ -3361,7 +3361,7 @@ dependencies = [
  "serde",
  "serde_json",
  "text",
- "zed_credentials_provider",
+ "rdg_credentials_provider",
  "zeta_prompt",
 ]
 
@@ -3458,7 +3458,7 @@ dependencies = [
  "uuid",
  "workspace",
  "worktree",
- "zed_actions",
+ "rdg_actions",
  "zlog",
 ]
 
@@ -3495,7 +3495,7 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -3566,7 +3566,7 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -4841,7 +4841,7 @@ dependencies = [
  "tempfile",
  "util",
  "uuid",
- "zed_env_vars",
+ "rdg_env_vars",
 ]
 
 [[package]]
@@ -4938,7 +4938,7 @@ dependencies = [
  "unindent",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
  "zlog",
 ]
 
@@ -5106,7 +5106,7 @@ dependencies = [
  "unindent",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
  "zlog",
 ]
 
@@ -5423,8 +5423,8 @@ dependencies = [
  "uuid",
  "workspace",
  "worktree",
- "zed_actions",
- "zed_credentials_provider",
+ "rdg_actions",
+ "rdg_credentials_provider",
  "zeta_prompt",
  "zlog",
  "zstd",
@@ -5580,7 +5580,7 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
  "zeta_prompt",
 ]
 
@@ -5667,7 +5667,7 @@ dependencies = [
  "uuid",
  "vim_mode_setting",
  "workspace",
- "zed_actions",
+ "rdg_actions",
  "zlog",
  "ztracing",
 ]
@@ -6292,7 +6292,7 @@ dependencies = [
  "util",
  "vim_mode_setting",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -6405,7 +6405,7 @@ dependencies = [
  "urlencoding",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -6447,7 +6447,7 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
  "zlog",
 ]
 
@@ -7253,7 +7253,7 @@ dependencies = [
  "util",
  "watch",
  "workspace",
- "zed_actions",
+ "rdg_actions",
  "zlog",
  "ztracing",
 ]
@@ -7295,7 +7295,7 @@ dependencies = [
  "util",
  "watch",
  "workspace",
- "zed_actions",
+ "rdg_actions",
  "zeroize",
  "zlog",
  "ztracing",
@@ -8899,7 +8899,7 @@ dependencies = [
  "util",
  "util_macros",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -9414,7 +9414,7 @@ dependencies = [
  "ui_input",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -9792,7 +9792,7 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
  "zlog",
 ]
 
@@ -10619,7 +10619,7 @@ dependencies = [
  "urlencoding",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -11044,7 +11044,7 @@ dependencies = [
  "theme_settings",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -11403,7 +11403,7 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -12129,7 +12129,7 @@ dependencies = [
  "util",
  "vim_mode_setting",
  "workspace",
- "zed_actions",
+ "rdg_actions",
  "zlog",
 ]
 
@@ -12438,7 +12438,7 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -12473,7 +12473,7 @@ dependencies = [
  "util",
  "workspace",
  "worktree",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -13380,7 +13380,7 @@ dependencies = [
  "ui_input",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -13504,7 +13504,7 @@ dependencies = [
  "ui",
  "windows 0.61.3",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -13943,7 +13943,7 @@ dependencies = [
  "wax",
  "which",
  "worktree",
- "zed_credentials_provider",
+ "rdg_credentials_provider",
  "zeroize",
  "zlog",
  "ztracing",
@@ -14011,7 +14011,7 @@ dependencies = [
  "util",
  "workspace",
  "worktree",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -14833,7 +14833,7 @@ dependencies = [
  "windows-registry 0.6.1",
  "workspace",
  "worktree",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -15165,7 +15165,7 @@ dependencies = [
  "util",
  "uuid",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -16129,7 +16129,7 @@ dependencies = [
  "util",
  "util_macros",
  "workspace",
- "zed_actions",
+ "rdg_actions",
  "ztracing",
 ]
 
@@ -16544,7 +16544,7 @@ dependencies = [
  "theme_settings",
  "ui",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -16607,8 +16607,8 @@ dependencies = [
  "url",
  "util",
  "workspace",
- "zed_actions",
- "zed_credentials_provider",
+ "rdg_actions",
+ "rdg_credentials_provider",
 ]
 
 [[package]]
@@ -16760,7 +16760,7 @@ dependencies = [
  "unicode-segmentation",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -17622,7 +17622,7 @@ dependencies = [
  "multi_buffer",
  "ui",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -18087,7 +18087,7 @@ dependencies = [
  "sha2",
  "shellexpand",
  "util",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -18114,7 +18114,7 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -18259,7 +18259,7 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -18355,7 +18355,7 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -18604,7 +18604,7 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -19900,7 +19900,7 @@ dependencies = [
  "util_macros",
  "vim_mode_setting",
  "workspace",
- "zed_actions",
+ "rdg_actions",
 ]
 
 [[package]]
@@ -22313,7 +22313,7 @@ dependencies = [
  "url",
  "util",
  "uuid",
- "zed_actions",
+ "rdg_actions",
  "zlog",
 ]
 
@@ -22926,9 +22926,9 @@ dependencies = [
  "windows_resources",
  "workspace",
  "zed-reqwest",
- "zed_actions",
- "zed_credentials_provider",
- "zed_env_vars",
+ "rdg_actions",
+ "rdg_credentials_provider",
+ "rdg_env_vars",
  "zlog",
  "zlog_settings",
  "ztracing",
@@ -23042,7 +23042,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zed_actions"
+name = "rdg_actions"
 version = "0.1.0"
 dependencies = [
  "gpui",
@@ -23052,7 +23052,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zed_credentials_provider"
+name = "rdg_credentials_provider"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -23065,7 +23065,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zed_env_vars"
+name = "rdg_env_vars"
 version = "0.1.0"
 dependencies = [
  "env_var",
