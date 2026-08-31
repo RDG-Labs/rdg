@@ -62,7 +62,7 @@ An `Entity<T>` is a handle to state of type `T`. With `thing: Entity<T>`:
 
 Within the closures, the inner `cx` provided to the closure must be used instead of the outer `cx` to avoid issues with multiple borrows.
 
-Trying to update an entity while it's already being updated must be avoided as this will cause a panic.
+Trying to update an entity while it's already being updated must be avoided as this will cause a panic. This applies to reads too, and the trap is easy to miss: an action handler registered with `workspace.register_action` runs *while* `Workspace` is being updated, so calling `workspace.read_with(...)` from inside one panics with "cannot read Workspace while it is already being updated". The same holds for a handler reacting to an entity's own event. Do the read inside a `cx.spawn` block or a `window.defer` callback, which run after the current update completes.
 
 `WeakEntity<T>` is a weak handle. It has `read_with`, `update`, and `update_in` methods that work the same, but always return an `anyhow::Result` so that they can fail if the entity no longer exists. This can be useful to avoid memory leaks - if entities have mutually recursive handles to each other they will never be dropped.
 
