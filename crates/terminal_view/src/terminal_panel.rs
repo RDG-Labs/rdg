@@ -842,6 +842,20 @@ impl TerminalPanel {
         ) -> Task<Result<Entity<Terminal>>>
         + 'static,
     ) -> Task<Result<WeakEntity<Terminal>>> {
+        Self::add_center_terminal_in_direction(workspace, None, window, cx, create_terminal)
+    }
+
+    pub(crate) fn add_center_terminal_in_direction(
+        workspace: &mut Workspace,
+        split_direction: Option<SplitDirection>,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+        create_terminal: impl FnOnce(
+            &mut Project,
+            &mut Context<Project>,
+        ) -> Task<Result<Entity<Terminal>>>
+        + 'static,
+    ) -> Task<Result<WeakEntity<Terminal>>> {
         if !is_enabled_in_workspace(workspace, cx) {
             return Task::ready(Err(anyhow!(
                 "terminal not yet supported for remote projects"
@@ -866,13 +880,17 @@ impl TerminalPanel {
                 // a background terminal can finish starting up after the user has
                 // moved on, and focusing it would dismiss whatever they opened.
                 let focus_item = !workspace.has_active_modal(window, cx);
-                workspace.add_item_to_active_pane(
-                    Box::new(terminal_view),
-                    None,
-                    focus_item,
-                    window,
-                    cx,
-                );
+                if let Some(direction) = split_direction {
+                    workspace.split_item(direction, Box::new(terminal_view), window, cx);
+                } else {
+                    workspace.add_item_to_active_pane(
+                        Box::new(terminal_view),
+                        None,
+                        focus_item,
+                        window,
+                        cx,
+                    );
+                }
             })?;
             Ok(terminal.downgrade())
         })
@@ -1882,7 +1900,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use project::FakeFs;
     use settings::SettingsStore;
-    use workspace::{MultiWorkspace, WorkspaceId};
+    use workspace::{MultiWorkspace, NewCenterTerminalSplit, WorkspaceId};
 
     #[test]
     fn test_prepare_empty_task() {
@@ -2903,6 +2921,63 @@ mod tests {
             .expect("Failed to initialize workspace with terminal panel");
 
         (window_handle, terminal_panel)
+    }
+
+    #[gpui::test]
+    async fn test_new_center_terminal_split_creates_multiple_panes(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        init_test(cx);
+
+        let (window_handle, _) = init_workspace_with_panel(cx).await;
+
+        window_handle
+            .update(cx, |multi_workspace, window, cx| {
+                multi_workspace.workspace().update(cx, |workspace, cx| {
+                    TerminalPanel::add_center_terminal(workspace, window, cx, |project, cx| {
+                        project.create_terminal_shell(None, cx)
+                    })
+                })
+            })
+            .expect("Failed to update workspace")
+            .await
+            .expect("Failed to create center terminal");
+        cx.run_until_parked();
+
+        for direction in [SplitDirection::Right, SplitDirection::Down] {
+            window_handle
+                .update(cx, |_, window, cx| {
+                    window.dispatch_action(
+                        NewCenterTerminalSplit {
+                            direction,
+                            local: false,
+                        }
+                        .boxed_clone(),
+                        cx,
+                    );
+                })
+                .expect("Failed to dispatch terminal split");
+            cx.run_until_parked();
+        }
+
+        let (pane_count, terminal_count) = window_handle
+            .read_with(cx, |multi_workspace, cx| {
+                multi_workspace.workspace().read_with(cx, |workspace, cx| {
+                    let panes = workspace.panes();
+                    let terminal_count = panes
+                        .iter()
+                        .filter(|pane| {
+                            pane.read(cx)
+                                .active_item()
+                                .is_some_and(|item| item.downcast::<TerminalView>().is_some())
+                        })
+                        .count();
+                    (panes.len(), terminal_count)
+                })
+            })
+            .expect("Failed to read workspace panes");
+
+        assert_eq!(pane_count, 3);
+        assert_eq!(terminal_count, 3);
     }
 
     #[gpui::test]

@@ -49,8 +49,8 @@ use ui::{
 };
 use util::ResultExt;
 use workspace::{
-    CloseActiveItem, DraggedSelection, DraggedTab, NewCenterTerminal, NewTerminal, Pane,
-    ToolbarItemLocation, Workspace, WorkspaceId, delete_unloaded_items,
+    CloseActiveItem, DraggedSelection, DraggedTab, NewCenterTerminal, NewCenterTerminalSplit,
+    NewTerminal, Pane, ToolbarItemLocation, Workspace, WorkspaceId, delete_unloaded_items,
     item::{
         HighlightedText, Item, ItemEvent, SerializableItem, TabContentParams, TabTooltipContent,
     },
@@ -111,6 +111,7 @@ pub fn init(cx: &mut App) {
 
     cx.observe_new(|workspace: &mut Workspace, _window, _cx| {
         workspace.register_action(TerminalView::deploy);
+        workspace.register_action(TerminalView::deploy_split);
     })
     .detach();
 }
@@ -227,6 +228,31 @@ impl TerminalView {
                 project.create_terminal_shell(working_directory, cx)
             }
         })
+        .detach_and_log_err(cx);
+    }
+
+    fn deploy_split(
+        workspace: &mut Workspace,
+        action: &NewCenterTerminalSplit,
+        window: &mut Window,
+        cx: &mut Context<Workspace>,
+    ) {
+        let local = action.local;
+        let direction = action.direction;
+        let working_directory = default_working_directory(workspace, cx);
+        TerminalPanel::add_center_terminal_in_direction(
+            workspace,
+            Some(direction),
+            window,
+            cx,
+            move |project, cx| {
+                if local {
+                    project.create_local_terminal(cx)
+                } else {
+                    project.create_terminal_shell(working_directory, cx)
+                }
+            },
+        )
         .detach_and_log_err(cx);
     }
 
