@@ -5,7 +5,7 @@ use cloud_api_types::Plan;
 use gpui::{Entity, IntoElement, ParentElement};
 use ui::prelude::*;
 
-use crate::ZedAiOnboarding;
+use crate::RdgAiOnboarding;
 
 pub struct EditPredictionOnboarding {
     user_store: Entity<UserStore>,
@@ -68,7 +68,7 @@ impl Render for EditPredictionOnboarding {
 
         v_flex()
             .gap_2()
-            .child(ZedAiOnboarding::new(
+            .child(RdgAiOnboarding::new(
                 self.client.clone(),
                 &self.user_store,
                 self.continue_with_zed_ai.clone(),

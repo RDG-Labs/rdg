@@ -383,12 +383,12 @@ impl RenderOnce for RdgAiOnboarding {
         if matches!(self.sign_in_status, SignInStatus::SignedIn) {
             match self.plan {
                 None => self.render_free_plan_state(cx),
-                Some(Plan::RdgFree) => self.render_free_plan_state(cx),
-                Some(Plan::RdgProTrial) => self.render_trial_state(cx),
-                Some(Plan::RdgPro) => self.render_pro_plan_state(cx),
-                Some(Plan::RdgBusiness) => self.render_business_plan_state(cx),
-                Some(Plan::RdgVip) => self.render_vip_plan_state(cx),
-                Some(Plan::RdgStudent) => self.render_student_plan_state(cx),
+                Some(Plan::ZedFree) => self.render_free_plan_state(cx),
+                Some(Plan::ZedProTrial) => self.render_trial_state(cx),
+                Some(Plan::ZedPro) => self.render_pro_plan_state(cx),
+                Some(Plan::ZedBusiness) => self.render_business_plan_state(cx),
+                Some(Plan::ZedVip) => self.render_vip_plan_state(cx),
+                Some(Plan::ZedStudent) => self.render_student_plan_state(cx),
             }
         } else {
             self.render_sign_in_disclaimer(cx)
@@ -451,27 +451,27 @@ impl Component for RdgAiOnboarding {
                 ),
                 single_example(
                     "Free Plan",
-                    onboarding(SignInStatus::SignedIn, Some(Plan::RdgFree), false),
+                    onboarding(SignInStatus::SignedIn, Some(Plan::ZedFree), false),
                 ),
                 single_example(
                     "Pro Trial",
-                    onboarding(SignInStatus::SignedIn, Some(Plan::RdgProTrial), false),
+                    onboarding(SignInStatus::SignedIn, Some(Plan::ZedProTrial), false),
                 ),
                 single_example(
                     "Pro Plan",
-                    onboarding(SignInStatus::SignedIn, Some(Plan::RdgPro), false),
+                    onboarding(SignInStatus::SignedIn, Some(Plan::ZedPro), false),
                 ),
                 single_example(
                     "Business Plan",
-                    onboarding(SignInStatus::SignedIn, Some(Plan::RdgBusiness), false),
+                    onboarding(SignInStatus::SignedIn, Some(Plan::ZedBusiness), false),
                 ),
                 single_example(
                     "VIP Plan",
-                    onboarding(SignInStatus::SignedIn, Some(Plan::RdgVip), false),
+                    onboarding(SignInStatus::SignedIn, Some(Plan::ZedVip), false),
                 ),
                 single_example(
                     "Student Plan",
-                    onboarding(SignInStatus::SignedIn, Some(Plan::RdgStudent), false),
+                    onboarding(SignInStatus::SignedIn, Some(Plan::ZedStudent), false),
                 ),
             ])
             .into_any_element()
