@@ -1527,4 +1527,34 @@
       "ctrl-w": "workspace::CloseWindow",
     },
   },
+  {
+    // shift-escape is bound globally to workspace::ToggleZoom, and a
+    // context-less binding matches at the deepest node in the dispatch path.
+    // Claiming it here, at that same node, is what lets a focused tile magnify
+    // instead of zooming the whole pane.
+    "context": "TerminalGroup > Terminal",
+    "use_key_equivalents": true,
+    "bindings": {
+      "shift-escape": "terminal_group::ToggleMagnify"
+    },
+  },
+  {
+    "context": "TerminalGroup",
+    "use_key_equivalents": true,
+    "bindings": {
+      "shift-escape": "terminal_group::ToggleMagnify",
+      "ctrl-shift-left": "terminal_group::FocusLeft",
+      "ctrl-shift-right": "terminal_group::FocusRight",
+      "ctrl-shift-up": "terminal_group::FocusUp",
+      "ctrl-shift-down": "terminal_group::FocusDown",
+      "ctrl-shift-h": "terminal_group::FocusLeft",
+      "ctrl-shift-l": "terminal_group::FocusRight",
+      "ctrl-shift-k": "terminal_group::FocusUp",
+      "ctrl-shift-j": "terminal_group::FocusDown",
+      "ctrl-alt-shift-left": "terminal_group::SwapLeft",
+      "ctrl-alt-shift-right": "terminal_group::SwapRight",
+      "ctrl-alt-shift-up": "terminal_group::SwapUp",
+      "ctrl-alt-shift-down": "terminal_group::SwapDown"
+    },
+  },
 ]

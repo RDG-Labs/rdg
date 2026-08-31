@@ -14881,6 +14881,7 @@ dependencies = [
  "tabular_data_preview",
  "tasks_ui",
  "telemetry",
+ "terminal_group",
  "terminal_view",
  "theme",
  "theme_extension",
@@ -18377,6 +18378,31 @@ dependencies = [
  "util_macros",
  "vte",
  "windows 0.61.3",
+]
+
+[[package]]
+name = "terminal_group"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "db",
+ "editor",
+ "gpui",
+ "log",
+ "menu",
+ "project",
+ "schemars 1.0.4",
+ "serde",
+ "serde_json",
+ "settings",
+ "settings_content",
+ "terminal",
+ "terminal_view",
+ "theme",
+ "theme_settings",
+ "ui",
+ "util",
+ "workspace",
 ]
 
 [[package]]

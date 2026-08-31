@@ -300,6 +300,9 @@ pub struct SettingsContent {
     /// Configuration of the terminal in Zed.
     pub terminal: Option<TerminalSettingsContent>,
 
+    /// Configuration of the tiled terminal workspace.
+    pub terminal_workspace: Option<TerminalWorkspaceSettingsContent>,
+
     pub title_bar: Option<TitleBarSettingsContent>,
 
     /// Whether or not to enable Vim mode.
@@ -405,7 +408,8 @@ fallible_options::flattened_deserialize!(SettingsContent {
         global_lsp_settings, image_viewer, markdown_preview, repl, helix_mode, hide_mouse,
         journal, log, line_indicator_format, language_models, outline_panel, project_panel,
         node, proxy, reduce_motion, server_url, credentials_url, session, telemetry, terminal,
-        title_bar, vim_mode, calls, which_key, vim, modeline_lines, feature_flags,
+        terminal_workspace, title_bar, vim_mode, calls, which_key, vim, modeline_lines,
+        feature_flags,
         instrumentation,
     },
     defaults: {},
@@ -1427,6 +1431,55 @@ pub struct ReplSettingsContent {
     ///
     /// Default: 0
     pub output_max_height_lines: Option<usize>,
+}
+
+/// Settings for the tiled terminal workspace (terminal groups).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct TerminalWorkspaceSettingsContent {
+    /// Gap between tiles, in pixels. Also the width of the resize gutter.
+    ///
+    /// Default: 6
+    pub gap: Option<f32>,
+    /// Corner radius of a tile, in pixels.
+    ///
+    /// Default: 6
+    pub corner_radius: Option<f32>,
+    /// Fewest columns a tile may have and still be considered usable. Splits
+    /// that would go below this are adapted or refused.
+    ///
+    /// Default: 30
+    pub min_tile_columns: Option<usize>,
+    /// Fewest rows a tile may have and still be considered usable.
+    ///
+    /// Default: 8
+    pub min_tile_rows: Option<usize>,
+    /// What to do when a split cannot produce a usable tile.
+    /// "adapt" tries the other axis first, "refuse" does not, and "off"
+    /// removes the guard entirely.
+    ///
+    /// Default: "adapt"
+    pub split_guard: Option<SplitGuardContent>,
+    /// Fraction of the group a magnified tile fills.
+    ///
+    /// Default: 0.92
+    pub magnify_size: Option<f32>,
+    /// Most tiles allowed in one group.
+    ///
+    /// Default: 32
+    pub max_tiles: Option<usize>,
+}
+
+/// How a terminal group responds to a split that cannot produce a usable tile.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, MergeFrom)]
+#[serde(rename_all = "snake_case")]
+pub enum SplitGuardContent {
+    /// Try the perpendicular axis before refusing.
+    #[default]
+    Adapt,
+    /// Refuse without trying the other axis.
+    Refuse,
+    /// Never refuse.
+    Off,
 }
 
 /// Settings for configuring the which-key popup behaviour.
