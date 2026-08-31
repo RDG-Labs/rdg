@@ -104,9 +104,9 @@ use workspace::{
 };
 use workspace::{CloseProject, CloseWindow, RestoreBanner, with_active_or_new_workspace};
 use workspace::{Pane, notifications::DetachAndPromptErr};
-use zed_actions::{
+use rdg_actions::{
     About, GetMerch, OpenAccountSettings, OpenBrowser, OpenDocs, OpenProjectTasks,
-    OpenServerSettings, OpenSettingsFile, OpenStatusPage, OpenZedUrl, Quit,
+    OpenServerSettings, OpenSettingsFile, OpenStatusPage, OpenRdgUrl, Quit,
 };
 
 const DOCS_URL: &str = "https://zed.dev/docs/";
@@ -220,7 +220,7 @@ pub fn init(cx: &mut App) {
     })
     .detach();
 
-    // When Zed logs to stdout rather than the log file, avoid registering
+    // When Rdg logs to stdout rather than the log file, avoid registering
     // handlers for both `OpenLog` and `RevealLogInFileManager`, as the log file
     // does not exist in that scenario and these actions would error.
     if !crate::stdout_is_a_pty() {
@@ -234,7 +234,7 @@ pub fn init(cx: &mut App) {
         });
     }
 
-    cx.on_action(|_: &zed_actions::OpenLicenses, cx| {
+    cx.on_action(|_: &rdg_actions::OpenLicenses, cx| {
         with_active_or_new_workspace(cx, |workspace, window, cx| {
             open_bundled_file(
                 workspace,
@@ -246,7 +246,7 @@ pub fn init(cx: &mut App) {
             );
         });
     })
-    .on_action(|&zed_actions::OpenKeymapFile, cx| {
+    .on_action(|&rdg_actions::OpenKeymapFile, cx| {
         with_active_or_new_workspace(cx, |_, window, cx| {
             open_settings_file(
                 paths::keymap_file(),
@@ -315,7 +315,7 @@ pub fn init(cx: &mut App) {
             );
         });
     })
-    .on_action(|_: &zed_actions::OpenDefaultKeymap, cx| {
+    .on_action(|_: &rdg_actions::OpenDefaultKeymap, cx| {
         with_active_or_new_workspace(cx, |workspace, window, cx| {
             open_bundled_file(
                 workspace,
@@ -400,7 +400,7 @@ pub fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowO
         show: false,
         kind: WindowKind::Normal,
         is_movable: true,
-        // Zed draws its own titlebar and moves the window via [`Window::start_window_move`],
+        // Rdg draws its own titlebar and moves the window via [`Window::start_window_move`],
         // so on macOS AppKit should not own titlebar dragging. This avoids the titlebar
         // click delay from AppKit's drag disambiguation (first observed on macOS 27) while
         // keeping the window movable and the Window-menu tiling items enabled. No-op on
@@ -745,7 +745,7 @@ fn show_software_emulation_warning_if_needed(
         };
         let message = format!(
             db::indoc! {r#"
-            Zed uses {} for rendering and requires a compatible GPU.
+            Rdg uses {} for rendering and requires a compatible GPU.
 
             Currently you are using a software emulated GPU ({}) which
             will result in awful performance.
@@ -1039,15 +1039,15 @@ fn register_actions(
                 window.toggle_fullscreen();
             }
         })
-        .register_action(|_, _: &zed_actions::dev::ToggleFpsOverlay, window, _| {
+        .register_action(|_, _: &rdg_actions::dev::ToggleFpsOverlay, window, _| {
             window.cycle_debug_frame_overlay_mode();
         })
         .register_action(
-            |_, _: &zed_actions::dev::ResetFrameOverlayStats, window, _| {
+            |_, _: &rdg_actions::dev::ResetFrameOverlayStats, window, _| {
                 window.reset_debug_frame_overlay_stats();
             },
         )
-        .register_action(|_, action: &OpenZedUrl, _, cx| {
+        .register_action(|_, action: &OpenRdgUrl, _, cx| {
             OpenListener::global(cx).open(RawOpenRequest {
                 urls: vec![String::from(&*action.url)],
                 ..Default::default()
@@ -1113,7 +1113,7 @@ fn register_actions(
                 cx,
             );
         })
-        .register_action(|workspace, action: &zed_actions::OpenRemote, window, cx| {
+        .register_action(|workspace, action: &rdg_actions::OpenRemote, window, cx| {
             if !action.from_existing_connection {
                 cx.propagate();
                 return;
@@ -1163,7 +1163,7 @@ fn register_actions(
         })
         .register_action({
             let fs = app_state.fs.clone();
-            move |_, action: &zed_actions::IncreaseUiFontSize, _window, cx| {
+            move |_, action: &rdg_actions::IncreaseUiFontSize, _window, cx| {
                 if action.persist {
                     update_settings_file(fs.clone(), cx, move |settings, cx| {
                         let ui_font_size = ThemeSettings::get_global(cx).ui_font_size(cx) + px(1.0);
@@ -1179,7 +1179,7 @@ fn register_actions(
         })
         .register_action({
             let fs = app_state.fs.clone();
-            move |_, action: &zed_actions::DecreaseUiFontSize, _window, cx| {
+            move |_, action: &rdg_actions::DecreaseUiFontSize, _window, cx| {
                 if action.persist {
                     update_settings_file(fs.clone(), cx, move |settings, cx| {
                         let ui_font_size = ThemeSettings::get_global(cx).ui_font_size(cx) - px(1.0);
@@ -1195,7 +1195,7 @@ fn register_actions(
         })
         .register_action({
             let fs = app_state.fs.clone();
-            move |_, action: &zed_actions::ResetUiFontSize, _window, cx| {
+            move |_, action: &rdg_actions::ResetUiFontSize, _window, cx| {
                 if action.persist {
                     update_settings_file(fs.clone(), cx, move |settings, _| {
                         settings.theme.ui_font_size = None;
@@ -1207,7 +1207,7 @@ fn register_actions(
         })
         .register_action({
             let fs = app_state.fs.clone();
-            move |_, action: &zed_actions::IncreaseBufferFontSize, _window, cx| {
+            move |_, action: &rdg_actions::IncreaseBufferFontSize, _window, cx| {
                 if action.persist {
                     update_settings_file(fs.clone(), cx, move |settings, cx| {
                         let buffer_font_size =
@@ -1224,7 +1224,7 @@ fn register_actions(
         })
         .register_action({
             let fs = app_state.fs.clone();
-            move |_, action: &zed_actions::DecreaseBufferFontSize, _window, cx| {
+            move |_, action: &rdg_actions::DecreaseBufferFontSize, _window, cx| {
                 if action.persist {
                     update_settings_file(fs.clone(), cx, move |settings, cx| {
                         let buffer_font_size =
@@ -1241,7 +1241,7 @@ fn register_actions(
         })
         .register_action({
             let fs = app_state.fs.clone();
-            move |_, action: &zed_actions::ResetBufferFontSize, _window, cx| {
+            move |_, action: &rdg_actions::ResetBufferFontSize, _window, cx| {
                 if action.persist {
                     update_settings_file(fs.clone(), cx, move |settings, _| {
                         settings.theme.buffer_font_size = None;
@@ -1253,7 +1253,7 @@ fn register_actions(
         })
         .register_action({
             let fs = app_state.fs.clone();
-            move |_, action: &zed_actions::ResetAllZoom, _window, cx| {
+            move |_, action: &rdg_actions::ResetAllZoom, _window, cx| {
                 if action.persist {
                     update_settings_file(fs.clone(), cx, move |settings, _| {
                         settings.theme.ui_font_size = None;
@@ -1269,15 +1269,15 @@ fn register_actions(
                 }
             }
         })
-        .register_action(|_, _: &install_cli::RegisterZedScheme, window, cx| {
+        .register_action(|_, _: &install_cli::RegisterRdgScheme, window, cx| {
             cx.spawn_in(window, async move |workspace, cx| {
                 install_cli::register_zed_scheme(cx).await?;
                 workspace.update_in(cx, |workspace, _, cx| {
-                    struct RegisterZedScheme;
+                    struct RegisterRdgScheme;
 
                     workspace.show_toast(
                         Toast::new(
-                            NotificationId::unique::<RegisterZedScheme>(),
+                            NotificationId::unique::<RegisterRdgScheme>(),
                             format!(
                                 "zed:// links will now open in {}.",
                                 ReleaseChannel::global(cx).display_name()
@@ -1301,7 +1301,7 @@ fn register_actions(
         .register_action(open_project_debug_tasks_file)
         .register_action(
             |workspace: &mut Workspace,
-             _: &zed_actions::project_panel::ToggleFocus,
+             _: &rdg_actions::project_panel::ToggleFocus,
              window: &mut Window,
              cx: &mut Context<Workspace>| {
                 workspace.toggle_panel_focus::<ProjectPanel>(window, cx);
@@ -1732,7 +1732,7 @@ fn open_about_window(cx: &mut App) {
     cx.open_window(
         WindowOptions {
             titlebar: Some(TitlebarOptions {
-                title: Some("About Zed".into()),
+                title: Some("About Rdg".into()),
                 appears_transparent: true,
                 traffic_light_position: Some(point(px(12.), px(12.))),
             }),
@@ -1956,7 +1956,7 @@ fn notify_settings_errors(result: settings::SettingsParseResult, is_user: bool, 
                             .primary_icon(IconName::Settings)
                             .primary_on_click(|window, cx| {
                                 window.dispatch_action(
-                                    zed_actions::OpenSettingsFile.boxed_clone(),
+                                    rdg_actions::OpenSettingsFile.boxed_clone(),
                                     cx,
                                 );
                                 cx.emit(DismissEvent);
@@ -1991,7 +1991,7 @@ fn notify_settings_errors(result: settings::SettingsParseResult, is_user: bool, 
                         .primary_message("Open Settings File")
                         .primary_icon(IconName::Settings)
                         .primary_on_click(|window, cx| {
-                            window.dispatch_action(zed_actions::OpenSettingsFile.boxed_clone(), cx);
+                            window.dispatch_action(rdg_actions::OpenSettingsFile.boxed_clone(), cx);
                             cx.emit(DismissEvent);
                         })
                     })
@@ -2274,7 +2274,7 @@ fn show_keymap_file_json_error(
                 .primary_message("Open Keymap File")
                 .primary_icon(IconName::Settings)
                 .primary_on_click(|window, cx| {
-                    window.dispatch_action(zed_actions::OpenKeymapFile.boxed_clone(), cx);
+                    window.dispatch_action(rdg_actions::OpenKeymapFile.boxed_clone(), cx);
                     cx.emit(DismissEvent);
                 })
         })
@@ -2291,7 +2291,7 @@ fn show_keymap_file_load_error(
         error_message,
         "Open Keymap File".into(),
         |window, cx| {
-            window.dispatch_action(zed_actions::OpenKeymapFile.boxed_clone(), cx);
+            window.dispatch_action(rdg_actions::OpenKeymapFile.boxed_clone(), cx);
             cx.emit(DismissEvent);
         },
         cx,
@@ -2488,14 +2488,14 @@ fn open_project_tasks_file(
 
 fn open_worktree_setup_tasks_file(
     workspace: &mut Workspace,
-    _: &zed_actions::OpenWorktreeSetupTasks,
+    _: &rdg_actions::OpenWorktreeSetupTasks,
     window: &mut Window,
     cx: &mut Context<Workspace>,
 ) {
     // Kept harmless on purpose: tasks with the `create_worktree` hook run automatically
     // when a worktree is created, so the example must be safe to save unedited.
     const WORKTREE_SETUP_TASK_EXAMPLE: &str = r#"  {
-    // Runs automatically after Zed creates a new git worktree.
+    // Runs automatically after Rdg creates a new git worktree.
     // $ZED_WORKTREE_ROOT is the new worktree's root directory, and
     // $ZED_MAIN_GIT_WORKTREE is the original repository's working directory.
     "label": "Set up new worktree",
@@ -2537,7 +2537,7 @@ fn open_worktree_setup_tasks_file(
 
 fn open_project_debug_tasks_file(
     workspace: &mut Workspace,
-    _: &zed_actions::OpenProjectDebugTasks,
+    _: &rdg_actions::OpenProjectDebugTasks,
     window: &mut Window,
     cx: &mut Context<Workspace>,
 ) {
@@ -3124,7 +3124,7 @@ mod tests {
                     }));
                 });
                 window.dispatch_action(
-                    Box::new(zed_actions::OpenRemote {
+                    Box::new(rdg_actions::OpenRemote {
                         from_existing_connection: true,
                         create_new_window: Some(false),
                     }),
@@ -5922,7 +5922,7 @@ mod tests {
                 "workspace",
                 "worktree_picker",
                 "zed",
-                "zed_actions",
+                "rdg_actions",
                 "zed_predict_onboarding",
                 "zeta",
             ];
@@ -6116,7 +6116,7 @@ mod tests {
             project_panel::init(cx);
             outline_panel::init(cx);
             terminal_view::init(cx);
-            let credentials_provider = zed_credentials_provider::global(cx);
+            let credentials_provider = rdg_credentials_provider::global(cx);
             copilot_chat::init(
                 app_state.client.http_client(),
                 credentials_provider,
@@ -6458,7 +6458,7 @@ mod tests {
         // User-defined bindings to AI actions should also be filtered.
         let user_binding = KeyBinding::new(
             "ctrl-enter",
-            zed_actions::assistant::InlineAssist { prompt: None },
+            rdg_actions::assistant::InlineAssist { prompt: None },
             None,
         );
         cx.update(|cx| reload_keymaps(cx, vec![user_binding]));

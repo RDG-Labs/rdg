@@ -83,7 +83,7 @@ let
   gpu-lib = if withGLES then libglvnd else vulkan-loader;
   commonArgs =
     let
-      zedCargoLock = builtins.fromTOML (builtins.readFile ../crates/zed/Cargo.toml);
+      zedCargoLock = builtins.fromTOML (builtins.readFile ../crates/rdg/Cargo.toml);
       stdenv' = stdenv;
     in
     rec {
@@ -228,7 +228,7 @@ let
             ../assets/fonts/ibm-plex-sans
           ];
         };
-        ZED_UPDATE_EXPLANATION = "Zed has been installed using Nix. Auto-updates have thus been disabled.";
+        ZED_UPDATE_EXPLANATION = "Rdg has been installed using Nix. Auto-updates have thus been disabled.";
         RELEASE_VERSION = version;
         ZED_COMMIT_SHA = lib.optionalString (commitSha != null) "${commitSha}";
         LK_CUSTOM_WEBRTC = pkgs.callPackage ./livekit-libwebrtc/package.nix { };
@@ -325,7 +325,7 @@ craneLib.buildPackage (
     # TODO: put this in a separate derivation that depends on src to avoid running it on every build
     preBuild = ''
       ALLOW_MISSING_LICENSES=yes bash script/generate-licenses
-      echo nightly > crates/zed/RELEASE_CHANNEL
+      echo nightly > crates/rdg/RELEASE_CHANNEL
     '';
 
     installPhase =
@@ -340,14 +340,14 @@ craneLib.buildPackage (
           popd
 
           mkdir -p $out/Applications $out/bin
-          # Zed expects git next to its own binary
+          # Rdg expects git next to its own binary
           ln -s ${git}/bin/git "$app_path/Contents/MacOS/git"
           mv $TARGET_DIR/cli "$app_path/Contents/MacOS/cli"
           mv "$app_path" $out/Applications/
 
           # Physical location of the CLI must be inside the app bundle as this is used
           # to determine which app to start
-          ln -s "$out/Applications/Zed Nightly.app/Contents/MacOS/cli" $out/bin/zed
+          ln -s "$out/Applications/Rdg Nightly.app/Contents/MacOS/cli" $out/bin/zed
 
           runHook postInstall
         ''
@@ -361,9 +361,9 @@ craneLib.buildPackage (
           ln -s $out/bin/zed $out/bin/zeditor  # home-manager expects the CLI binary to be here
 
 
-          install -D "crates/zed/resources/app-icon-nightly@2x.png" \
+          install -D "crates/rdg/resources/app-icon-nightly@2x.png" \
             "$out/share/icons/hicolor/1024x1024@2x/apps/zed.png"
-          install -D crates/zed/resources/app-icon-nightly.png \
+          install -D crates/rdg/resources/app-icon-nightly.png \
             $out/share/icons/hicolor/512x512/apps/zed.png
 
           # TODO: icons should probably be named "zed-nightly"
@@ -371,11 +371,11 @@ craneLib.buildPackage (
             export DO_STARTUP_NOTIFY="true"
             export APP_CLI="zed"
             export APP_ICON="zed"
-            export APP_NAME="Zed Nightly"
+            export APP_NAME="Rdg Nightly"
             export APP_ARGS="%U"
             mkdir -p "$out/share/applications"
-            ${lib.getExe envsubst} < "crates/zed/resources/zed.desktop.in" > "$out/share/applications/dev.zed.Zed-Nightly.desktop"
-            chmod +x "$out/share/applications/dev.zed.Zed-Nightly.desktop"
+            ${lib.getExe envsubst} < "crates/rdg/resources/rdg.desktop.in" > "$out/share/applications/dev.zed.Rdg-Nightly.desktop"
+            chmod +x "$out/share/applications/dev.zed.Rdg-Nightly.desktop"
           )
 
           runHook postInstall

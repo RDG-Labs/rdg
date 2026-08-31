@@ -231,7 +231,7 @@ pub fn init(cx: &mut App) {
             cx.notify();
         });
         workspace.register_action(
-            move |workspace, action: &zed_actions::search::NewSearchInDirectory, window, cx| {
+            move |workspace, action: &rdg_actions::search::NewSearchInDirectory, window, cx| {
                 ProjectSearchView::new_search_with_filter(
                     workspace,
                     action.directory.clone(),
@@ -5035,7 +5035,7 @@ pub mod tests {
         window
             .update(cx, |_, window, cx| {
                 window.dispatch_action(
-                    Box::new(zed_actions::search::NewSearchInDirectory { directory }),
+                    Box::new(rdg_actions::search::NewSearchInDirectory { directory }),
                     cx,
                 );
             })

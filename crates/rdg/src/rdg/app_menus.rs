@@ -2,25 +2,25 @@ use collab_ui::collab_panel;
 use gpui::{App, Menu, MenuItem, OsAction};
 use release_channel::ReleaseChannel;
 use terminal_view::terminal_panel;
-use zed_actions::{Quit, assistant, debug_panel, dev, git_panel, project_panel};
+use rdg_actions::{Quit, assistant, debug_panel, dev, git_panel, project_panel};
 
 pub fn app_menus(cx: &mut App) -> Vec<Menu> {
     let mut view_items = vec![
         MenuItem::action(
             "Zoom In",
-            zed_actions::IncreaseBufferFontSize { persist: false },
+            rdg_actions::IncreaseBufferFontSize { persist: false },
         ),
         MenuItem::action(
             "Zoom Out",
-            zed_actions::DecreaseBufferFontSize { persist: false },
+            rdg_actions::DecreaseBufferFontSize { persist: false },
         ),
         MenuItem::action(
             "Reset Zoom",
-            zed_actions::ResetBufferFontSize { persist: false },
+            rdg_actions::ResetBufferFontSize { persist: false },
         ),
         MenuItem::action(
             "Reset All Zoom",
-            zed_actions::ResetAllZoom { persist: false },
+            rdg_actions::ResetAllZoom { persist: false },
         ),
         MenuItem::separator(),
         MenuItem::action("Toggle Left Dock", workspace::ToggleLeftDock),
@@ -60,48 +60,48 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
 
     vec![
         Menu {
-            name: "Zed".into(),
+            name: "Rdg".into(),
             disabled: false,
             items: vec![
-                MenuItem::action("About Zed", zed_actions::About),
+                MenuItem::action("About Rdg", rdg_actions::About),
                 MenuItem::action("Check for Updates", auto_update::Check),
                 MenuItem::separator(),
                 MenuItem::submenu(Menu::new("Settings").items([
-                    MenuItem::action("Open Settings", zed_actions::OpenSettings),
+                    MenuItem::action("Open Settings", rdg_actions::OpenSettings),
                     MenuItem::action("Open Settings File", super::OpenSettingsFile),
-                    MenuItem::action("Open Project Settings", zed_actions::OpenProjectSettings),
+                    MenuItem::action("Open Project Settings", rdg_actions::OpenProjectSettings),
                     MenuItem::action("Open Project Settings File", super::OpenProjectSettingsFile),
                     MenuItem::action("Open Default Settings", super::OpenDefaultSettings),
                     MenuItem::separator(),
-                    MenuItem::action("Open Keymap", zed_actions::OpenKeymap),
-                    MenuItem::action("Open Keymap File", zed_actions::OpenKeymapFile),
-                    MenuItem::action("Open Default Key Bindings", zed_actions::OpenDefaultKeymap),
+                    MenuItem::action("Open Keymap", rdg_actions::OpenKeymap),
+                    MenuItem::action("Open Keymap File", rdg_actions::OpenKeymapFile),
+                    MenuItem::action("Open Default Key Bindings", rdg_actions::OpenDefaultKeymap),
                     MenuItem::separator(),
                     MenuItem::action(
                         "Select Theme...",
-                        zed_actions::theme_selector::Toggle::default(),
+                        rdg_actions::theme_selector::Toggle::default(),
                     ),
                     MenuItem::action(
                         "Select Icon Theme...",
-                        zed_actions::icon_theme_selector::Toggle::default(),
+                        rdg_actions::icon_theme_selector::Toggle::default(),
                     ),
                 ])),
                 MenuItem::separator(),
                 #[cfg(target_os = "macos")]
                 MenuItem::os_submenu("Services", gpui::SystemMenuType::Services),
                 MenuItem::separator(),
-                MenuItem::action("Extensions", zed_actions::Extensions::default()),
+                MenuItem::action("Extensions", rdg_actions::Extensions::default()),
                 #[cfg(not(target_os = "windows"))]
                 MenuItem::action("Install CLI", install_cli::InstallCliBinary),
                 MenuItem::separator(),
                 #[cfg(target_os = "macos")]
-                MenuItem::action("Hide Zed", super::Hide),
+                MenuItem::action("Hide Rdg", super::Hide),
                 #[cfg(target_os = "macos")]
                 MenuItem::action("Hide Others", super::HideOthers),
                 #[cfg(target_os = "macos")]
                 MenuItem::action("Show All", super::ShowAll),
                 MenuItem::separator(),
-                MenuItem::action("Quit Zed", Quit),
+                MenuItem::action("Quit Rdg", Quit),
             ],
         },
         Menu {
@@ -121,8 +121,8 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                     },
                     workspace::Open::default(),
                 ),
-                MenuItem::action("Open Recent…", zed_actions::OpenRecent::default()),
-                MenuItem::action("Open Remote…", zed_actions::OpenRemote::default()),
+                MenuItem::action("Open Recent…", rdg_actions::OpenRecent::default()),
+                MenuItem::action("Open Remote…", rdg_actions::OpenRemote::default()),
                 MenuItem::separator(),
                 MenuItem::action("Add Folder to Project…", workspace::AddFolderToProject),
                 MenuItem::separator(),
@@ -222,13 +222,13 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                 MenuItem::action("Back", workspace::GoBack),
                 MenuItem::action("Forward", workspace::GoForward),
                 MenuItem::separator(),
-                MenuItem::action("Command Palette...", zed_actions::command_palette::Toggle),
+                MenuItem::action("Command Palette...", rdg_actions::command_palette::Toggle),
                 MenuItem::separator(),
                 MenuItem::action("Go to File...", workspace::ToggleFileFinder::default()),
                 // MenuItem::action("Go to Symbol in Project", project_symbols::Toggle),
                 MenuItem::action(
                     "Go to Symbol in Editor...",
-                    zed_actions::outline::ToggleOutline,
+                    rdg_actions::outline::ToggleOutline,
                 ),
                 MenuItem::action("Go to Line/Column...", editor::actions::ToggleGoToLine),
                 MenuItem::separator(),
@@ -264,14 +264,14 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
             items: vec![
                 MenuItem::action(
                     "Spawn Task",
-                    zed_actions::Spawn::ViaModal {
+                    rdg_actions::Spawn::ViaModal {
                         reveal_target: None,
                     },
                 ),
                 MenuItem::action("Start Debugger", debugger_ui::Start),
                 MenuItem::separator(),
-                MenuItem::action("Edit tasks.json…", zed_actions::OpenProjectTasks),
-                MenuItem::action("Edit debug.json…", zed_actions::OpenProjectDebugTasks),
+                MenuItem::action("Edit tasks.json…", rdg_actions::OpenProjectTasks),
+                MenuItem::action("Edit debug.json…", rdg_actions::OpenProjectDebugTasks),
                 MenuItem::separator(),
                 MenuItem::action("Continue", debugger_ui::Continue),
                 MenuItem::action("Step Over", debugger_ui::StepOver),
@@ -300,13 +300,13 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                     "View Release Notes Locally",
                     auto_update_ui::ViewReleaseNotesLocally,
                 ),
-                MenuItem::action("View Telemetry", zed_actions::OpenTelemetryLog),
-                MenuItem::action("View Dependency Licenses", zed_actions::OpenLicenses),
+                MenuItem::action("View Telemetry", rdg_actions::OpenTelemetryLog),
+                MenuItem::action("View Dependency Licenses", rdg_actions::OpenLicenses),
                 MenuItem::action("Show Welcome", onboarding::ShowWelcome),
                 MenuItem::separator(),
-                MenuItem::action("File Bug Report...", zed_actions::feedback::FileBugReport),
-                MenuItem::action("Request Feature...", zed_actions::feedback::RequestFeature),
-                MenuItem::action("Email Us...", zed_actions::feedback::EmailZed),
+                MenuItem::action("File Bug Report...", rdg_actions::feedback::FileBugReport),
+                MenuItem::action("Request Feature...", rdg_actions::feedback::RequestFeature),
+                MenuItem::action("Email Us...", rdg_actions::feedback::EmailRdg),
                 MenuItem::separator(),
                 MenuItem::action(
                     "Documentation",
@@ -314,9 +314,9 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                         url: "https://zed.dev/docs".into(),
                     },
                 ),
-                MenuItem::action("Zed Repository", feedback::OpenZedRepo),
+                MenuItem::action("Rdg Repository", feedback::OpenRdgRepo),
                 MenuItem::action(
-                    "Zed Twitter",
+                    "Rdg Twitter",
                     super::OpenBrowser {
                         url: "https://twitter.com/zeddotdev".into(),
                     },

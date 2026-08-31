@@ -239,9 +239,9 @@
 # SUGGESTED: Review needed - based on Finn Evers (2 commits)
 /crates/sidebar/ @zed-industries/platform-team
 /crates/system_specs/ @zed-industries/platform-team
-/crates/zed/ @zed-industries/platform-team
-/crates/zed_actions/ @zed-industries/platform-team
-/crates/zed_env_vars/ @zed-industries/platform-team
+/crates/rdg/ @zed-industries/platform-team
+/crates/rdg_actions/ @zed-industries/platform-team
+/crates/rdg_env_vars/ @zed-industries/platform-team
 /docs/ @zed-industries/platform-team
 /docs/.conventions/ @zed-industries/platform-team
 /docs/.doc-examples/ @zed-industries/platform-team

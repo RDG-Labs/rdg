@@ -6860,7 +6860,7 @@ pub fn render_breadcrumb_text(
                                         .justify_between()
                                         .child(Label::new("Show Symbol Outline"))
                                         .child(ui::KeyBinding::for_action_in(
-                                            &zed_actions::outline::ToggleOutline,
+                                            &rdg_actions::outline::ToggleOutline,
                                             &focus_handle,
                                             cx,
                                         )),
@@ -6883,7 +6883,7 @@ pub fn render_breadcrumb_text(
                             move |_, window, cx| {
                                 if let Some((editor, callback)) = editor
                                     .upgrade()
-                                    .zip(zed_actions::outline::TOGGLE_OUTLINE.get())
+                                    .zip(rdg_actions::outline::TOGGLE_OUTLINE.get())
                                 {
                                     callback(editor.to_any_view(), window, cx);
                                 }

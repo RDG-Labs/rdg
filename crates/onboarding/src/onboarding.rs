@@ -28,7 +28,7 @@ use workspace::{
     notifications::NotifyResultExt as _,
     open_new, register_serializable_item, with_active_or_new_workspace,
 };
-use zed_actions::OpenOnboarding;
+use rdg_actions::OpenOnboarding;
 
 mod base_keymap_picker;
 mod basics_page;
@@ -234,12 +234,12 @@ impl Onboarding {
             "signing_in"
         } else {
             match plan {
-                Some(Plan::ZedPro) => "pro",
-                Some(Plan::ZedProTrial) => "trial",
-                Some(Plan::ZedBusiness) => "business",
-                Some(Plan::ZedVip) => "vip",
-                Some(Plan::ZedStudent) => "student",
-                Some(Plan::ZedFree) | None => "free",
+                Some(Plan::RdgPro) => "pro",
+                Some(Plan::RdgProTrial) => "trial",
+                Some(Plan::RdgBusiness) => "business",
+                Some(Plan::RdgVip) => "vip",
+                Some(Plan::RdgStudent) => "student",
+                Some(Plan::RdgFree) | None => "free",
             }
         };
         let agents_installed = basics_page::FEATURED_AGENT_IDS
@@ -347,11 +347,11 @@ impl Render for Onboarding {
                                     .child(
                                         h_flex()
                                             .gap_4()
-                                            .child(Vector::square(VectorName::ZedLogo, rems(2.5)))
+                                            .child(Vector::square(VectorName::RdgLogo, rems(2.5)))
                                             .child(
                                                 v_flex()
                                                     .child(
-                                                        Headline::new("Welcome to Zed")
+                                                        Headline::new("Welcome to Rdg")
                                                             .size(HeadlineSize::Small),
                                                     )
                                                     .child(

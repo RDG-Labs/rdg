@@ -47,7 +47,7 @@ use workspace::{
     AppState, MultiWorkspace, OpenOptions, OpenVisible, Workspace, WorkspaceSettings,
     client_side_decorations,
 };
-use zed_actions::{
+use rdg_actions::{
     AGENT_SKILLS_SETTINGS_PATH, OpenProjectSettings, OpenSettings, OpenSettingsAt,
     OpenSettingsAtTarget, OpenSettingsPage,
 };
@@ -455,10 +455,10 @@ pub fn init(cx: &mut App) {
     cx.on_action(|_: &OpenSettings, cx| {
         open_settings_editor(None, None, None, cx);
     });
-    cx.on_action(|_: &zed_actions::assistant::OpenSkillCreator, cx| {
+    cx.on_action(|_: &rdg_actions::assistant::OpenSkillCreator, cx| {
         open_skill_creator(pages::SkillCreatorOpenMode::Form, None, cx);
     });
-    cx.on_action(|_: &zed_actions::assistant::CreateSkillFromUrl, cx| {
+    cx.on_action(|_: &rdg_actions::assistant::CreateSkillFromUrl, cx| {
         let initial_url = pages::skill_url_from_clipboard(cx);
         open_skill_creator(pages::SkillCreatorOpenMode::Url { initial_url }, None, cx);
     });
@@ -502,13 +502,13 @@ pub fn init(cx: &mut App) {
                 open_settings_editor(None, target_worktree_id, window_handle, cx);
             })
             .register_action(
-                |_, _: &zed_actions::assistant::OpenSkillCreator, window, cx| {
+                |_, _: &rdg_actions::assistant::OpenSkillCreator, window, cx| {
                     let window_handle = window.window_handle().downcast::<MultiWorkspace>();
                     open_skill_creator(pages::SkillCreatorOpenMode::Form, window_handle, cx);
                 },
             )
             .register_action(
-                |_, _: &zed_actions::assistant::CreateSkillFromUrl, window, cx| {
+                |_, _: &rdg_actions::assistant::CreateSkillFromUrl, window, cx| {
                     let window_handle = window.window_handle().downcast::<MultiWorkspace>();
                     let initial_url = pages::skill_url_from_clipboard(cx);
                     open_skill_creator(
@@ -6453,7 +6453,7 @@ pub mod test {
         // Dispatch the action the way the command palette does: on the
         // workspace window.
         multi_workspace.update_in(cx, |_multi_workspace, window, cx| {
-            window.dispatch_action(Box::new(zed_actions::assistant::OpenSkillCreator), cx);
+            window.dispatch_action(Box::new(rdg_actions::assistant::OpenSkillCreator), cx);
         });
 
         cx.run_until_parked();

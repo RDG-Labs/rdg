@@ -37,7 +37,7 @@ use workspace::{
     item::{Item, ItemEvent, ItemHandle, SaveOptions},
     searchable::SearchableItemHandle,
 };
-use zed_actions::git as git_actions;
+use rdg_actions::git as git_actions;
 
 actions!(
     git,
@@ -1022,7 +1022,7 @@ mod tests {
         });
     }
 
-    use zed_actions::git as git_actions;
+    use rdg_actions::git as git_actions;
 
     use crate::project_diff::{self, ProjectDiff};
 

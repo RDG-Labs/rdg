@@ -6,8 +6,8 @@ use settings::Settings;
 use text::{Anchor, BufferId};
 use ui::{Tooltip, prelude::*};
 use workspace::{ToolbarItemEvent, ToolbarItemLocation, ToolbarItemView, item::ItemHandle};
-use zed_actions::assistant::InlineAssist;
-use zed_actions::buffer_search;
+use rdg_actions::assistant::InlineAssist;
+use rdg_actions::buffer_search;
 
 pub struct ToolbarControls {
     editor: Option<Box<dyn DiagnosticsToolbarEditor>>,

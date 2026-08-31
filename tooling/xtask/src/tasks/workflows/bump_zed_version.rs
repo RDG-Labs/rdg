@@ -41,7 +41,7 @@ fn resolve_versions() -> (steps::NamedJob, ResolvedOutputs) {
             major=$(echo "$version" | cut -d. -f1)
             minor=$(echo "$version" | cut -d. -f2)
 
-            channel=$(cat crates/zed/RELEASE_CHANNEL)
+            channel=$(cat crates/rdg/RELEASE_CHANNEL)
             if [[ "$channel" != "dev" && "$channel" != "nightly" ]]; then
                 echo "::error::release channel on main should be dev or nightly, found: $channel"
                 exit 1
@@ -178,7 +178,7 @@ fn create_preview_branch(
     outputs: &ResolvedOutputs,
 ) -> steps::NamedJob {
     fn promote_to_preview() -> Step<Run> {
-        named::bash("echo -n preview > crates/zed/RELEASE_CHANNEL")
+        named::bash("echo -n preview > crates/rdg/RELEASE_CHANNEL")
     }
 
     fn get_main_sha() -> Step<Run> {
@@ -204,7 +204,7 @@ fn create_preview_branch(
         &outputs.preview_branch,
         &token,
     )
-    .with_files("crates/zed/RELEASE_CHANNEL")
+    .with_files("crates/rdg/RELEASE_CHANNEL")
     .into();
     let commit_sha = StepOutput::new_unchecked(&commit_step, "commit");
 
@@ -258,7 +258,7 @@ fn promote_to_stable(
     .id("stable-info");
     let stable_tag = StepOutput::new(&read_version_step, "stable_tag");
 
-    let write_channel = named::bash("echo -n stable > crates/zed/RELEASE_CHANNEL");
+    let write_channel = named::bash("echo -n stable > crates/rdg/RELEASE_CHANNEL");
 
     let commit_step: Step<Use> = steps::BotCommitStep::new(
         format!(
@@ -268,7 +268,7 @@ fn promote_to_stable(
         &outputs.stable_branch,
         &token,
     )
-    .with_files("crates/zed/RELEASE_CHANNEL")
+    .with_files("crates/rdg/RELEASE_CHANNEL")
     .into();
     let commit_sha = StepOutput::new_unchecked(&commit_step, "commit");
 

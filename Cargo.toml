@@ -237,10 +237,10 @@ members = [
     "crates/worktree",
     "crates/worktree_benchmarks",
     "crates/x_ai",
-    "crates/zed",
-    "crates/zed_actions",
-    "crates/zed_credentials_provider",
-    "crates/zed_env_vars",
+    "crates/rdg",
+    "crates/rdg_actions",
+    "crates/rdg_credentials_provider",
+    "crates/rdg_env_vars",
     "crates/zeta_prompt",
     "crates/zlog",
     "crates/zlog_settings",
@@ -264,7 +264,7 @@ members = [
     "tooling/perf",
     "tooling/xtask",
 ]
-default-members = ["crates/zed"]
+default-members = ["crates/rdg"]
 
 [workspace.package]
 publish = false
@@ -501,9 +501,9 @@ which_key = { path = "crates/which_key" }
 workspace = { path = "crates/workspace" }
 worktree = { path = "crates/worktree" }
 x_ai = { path = "crates/x_ai" }
-zed_actions = { path = "crates/zed_actions" }
-zed_credentials_provider = { path = "crates/zed_credentials_provider" }
-zed_env_vars = { path = "crates/zed_env_vars" }
+rdg_actions = { path = "crates/rdg_actions" }
+rdg_credentials_provider = { path = "crates/rdg_credentials_provider" }
+rdg_env_vars = { path = "crates/rdg_env_vars" }
 zeta_prompt = { path = "crates/zeta_prompt" }
 zlog = { path = "crates/zlog" }
 zlog_settings = { path = "crates/zlog_settings" }
@@ -1063,7 +1063,7 @@ telemetry_events = { codegen-units = 1 }
 theme_selector = { codegen-units = 1 }
 time_format = { codegen-units = 1 }
 ui_input = { codegen-units = 1 }
-zed_actions = { codegen-units = 1 }
+rdg_actions = { codegen-units = 1 }
 
 [profile.release]
 debug = "limited"
@@ -1071,7 +1071,7 @@ lto = "thin"
 codegen-units = 1
 
 [profile.release.package]
-zed = { codegen-units = 16 }
+rdg = { codegen-units = 16 }
 
 [profile.release-fast]
 inherits = "release"

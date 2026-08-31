@@ -1,35 +1,38 @@
-# Zed
+> [!IMPORTANT]
+> Remove this line to confirm you've reviewed this PR before submitting.
 
-[![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
+# Rdg
+
+[![Rdg](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
 [![CI](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml/badge.svg)](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml)
 
-Welcome to Zed, a high-performance, multiplayer code editor from the creators of [Atom](https://github.com/atom/atom) and [Tree-sitter](https://github.com/tree-sitter/tree-sitter).
+Welcome to Rdg, a high-performance, multiplayer code editor from the creators of [Atom](https://github.com/atom/atom) and [Tree-sitter](https://github.com/tree-sitter/tree-sitter).
 
 ---
 
 ### Installation
 
-On macOS, Linux, and Windows you can [download Zed directly](https://zed.dev/download) or install Zed via your local package manager ([macOS](https://zed.dev/docs/installation#macos)/[Linux](https://zed.dev/docs/linux#installing-via-a-package-manager)/[Windows](https://zed.dev/docs/windows#package-managers)).
+On macOS, Linux, and Windows you can [download Rdg directly](https://zed.dev/download) or install Rdg via your local package manager ([macOS](https://zed.dev/docs/installation#macos)/[Linux](https://zed.dev/docs/linux#installing-via-a-package-manager)/[Windows](https://zed.dev/docs/windows#package-managers)).
 
 Other platforms are not yet available:
 
 - Web ([tracking discussion](https://github.com/zed-industries/zed/discussions/26195))
 
-### Developing Zed
+### Developing Rdg
 
-- [Building Zed for macOS](./docs/src/development/macos.md)
-- [Building Zed for Linux](./docs/src/development/linux.md)
-- [Building Zed for Windows](./docs/src/development/windows.md)
+- [Building Rdg for macOS](./docs/src/development/macos.md)
+- [Building Rdg for Linux](./docs/src/development/linux.md)
+- [Building Rdg for Windows](./docs/src/development/windows.md)
 
 ### Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for ways you can contribute to Zed.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for ways you can contribute to Rdg.
 
 Also... we're hiring! Check out our [jobs](https://zed.dev/jobs) page for open roles.
 
 ### Licensing
 
-Zed source code is licensed primarily under GPL-3.0-or-later, with Apache-2.0 components where marked.
+Rdg source code is licensed primarily under GPL-3.0-or-later, with Apache-2.0 components where marked.
 
 License information for third party dependencies must be correctly provided for CI to pass.
 
@@ -41,8 +44,8 @@ We use [`cargo-about`](https://github.com/EmbarkStudios/cargo-about) to automati
 
 ## Sponsorship
 
-Zed is developed by **Zed Industries, Inc.**, a for-profit company.
+Rdg is developed by **Rdg Industries, Inc.**, a for-profit company.
 
 If you’d like to financially support the project, you can do so via GitHub Sponsors.
-Sponsorships go directly to Zed Industries and are used as general company revenue.
+Sponsorships go directly to Rdg Industries and are used as general company revenue.
 There are no perks or entitlements associated with sponsorship.

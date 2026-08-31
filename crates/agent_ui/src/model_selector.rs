@@ -18,7 +18,7 @@ use picker::{Picker, PickerDelegate};
 use settings::SettingsStore;
 use ui::{DocumentationAside, IntoElement, prelude::*};
 use util::ResultExt;
-use zed_actions::agent::OpenSettings;
+use rdg_actions::agent::OpenSettings;
 
 use crate::ui::{
     ModelSelectorFooter, ModelSelectorHeader, ModelSelectorListItem, documentation_aside_side,

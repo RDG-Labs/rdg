@@ -45,7 +45,7 @@ fn main() {
 #[cfg(target_os = "macos")]
 fn main() {
     // Set ZED_STATELESS early to prevent file system access to real config directories
-    // This must be done before any code accesses zed_env_vars::ZED_STATELESS
+    // This must be done before any code accesses rdg_env_vars::ZED_STATELESS
     // SAFETY: We're at the start of main(), before any threads are spawned
     unsafe {
         std::env::set_var("ZED_STATELESS", "1");
@@ -120,7 +120,7 @@ use {
     },
     util::ResultExt as _,
     workspace::{AppState, MultiWorkspace, Workspace},
-    zed_actions::OpenSettingsAt,
+    rdg_actions::OpenSettingsAt,
 };
 
 // All macOS-specific constants grouped together
@@ -129,7 +129,7 @@ mod constants {
     use std::time::Duration;
 
     /// Baseline images are stored relative to this file
-    pub const BASELINE_DIR: &str = "crates/zed/test_fixtures/visual_tests";
+    pub const BASELINE_DIR: &str = "crates/rdg/test_fixtures/visual_tests";
 
     /// Embedded test image (Zed app icon) for visual tests.
     pub const EMBEDDED_TEST_IMAGE: &[u8] = include_bytes!("../resources/app-icon.png");
@@ -2317,7 +2317,7 @@ fn run_tool_permissions_visual_tests(
     use agent_settings::{AgentSettings, CompiledRegex, ToolPermissions, ToolRules};
     use collections::HashMap;
     use settings::ToolPermissionMode;
-    use zed_actions::OpenSettingsAt;
+    use rdg_actions::OpenSettingsAt;
 
     // Set up tool permissions with "hi" as both always_deny and always_allow for terminal
     cx.update(|cx| {

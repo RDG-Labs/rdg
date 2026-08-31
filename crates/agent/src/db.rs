@@ -19,7 +19,7 @@ use sqlez::{
 use std::{io::ErrorKind, path::PathBuf, sync::Arc};
 use ui::{App, SharedString};
 use util::path_list::PathList;
-use zed_env_vars::ZED_STATELESS;
+use rdg_env_vars::ZED_STATELESS;
 
 pub type DbMessage = crate::Message;
 pub type DbSummary = crate::legacy_thread::DetailedSummaryState;
