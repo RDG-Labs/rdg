@@ -2702,60 +2702,14 @@ impl CollabPanel {
             ))
     }
 
-    fn render_signed_out(&mut self, cx: &mut Context<Self>) -> Div {
-        let collab_blurb = "Work with your team in realtime with collaborative editing, voice, shared notes and more.";
-
-        // Two distinct "not connected" states:
-        //   - Authenticated (has credentials): user just needs to connect.
-        //   - Unauthenticated (no credentials): user needs to sign in via GitHub.
-        let is_authenticated = self.client.user_id().is_some();
-        let status = *self.client.status().borrow();
-        let is_busy = status.is_signing_in();
-
-        let (button_id, button_label, button_icon) = if is_authenticated {
-            (
-                "connect",
-                if is_busy { "Connecting…" } else { "Connect" },
-                IconName::Public,
-            )
-        } else {
-            (
-                "sign_in",
-                if is_busy {
-                    "Signing in…"
-                } else {
-                    "Sign In with GitHub"
-                },
-                IconName::Github,
-            )
-        };
-
+    fn render_signed_out(&mut self, _cx: &mut Context<Self>) -> Div {
         v_flex()
             .p_4()
             .gap_4()
             .size_full()
             .text_center()
             .justify_center()
-            .child(Label::new(collab_blurb))
-            .child(
-                Button::new(button_id, button_label)
-                    .full_width()
-                    .start_icon(Icon::new(button_icon).color(Color::Muted))
-                    .style(ButtonStyle::Outlined)
-                    .disabled(is_busy)
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        let client = this.client.clone();
-                        let workspace = this.workspace.clone();
-                        cx.spawn_in(window, async move |_, mut cx| {
-                            client
-                                .connect(true, &mut cx)
-                                .await
-                                .into_response()
-                                .notify_workspace_async_err(workspace, &mut cx);
-                        })
-                        .detach()
-                    })),
-            )
+            .child(Label::new("Online collaboration is disabled in Rdg."))
     }
 
     fn render_list_entry(
