@@ -1,0 +1,39 @@
+# workspace
+
+Traps specific to this crate. Repo-wide rules live in the root `.rules`.
+
+## `Pane` already offers drops to its active item
+
+`Pane::handle_tab_drop` gives the active item first refusal on a dropped tab
+before filing it as a sibling tab:
+
+```rust
+if is_pane_target && ix == self.active_item_index
+    && let Some(active_item) = self.active_item()
+    && active_item.handle_drop(self, dragged_tab, window, cx) { return; }
+```
+
+An item that manages its own layout — a container holding a nested pane tree —
+claims the drop by implementing `Item::handle_drop` and returning `true`.
+
+Why this is worth writing down: the pane renders an absolutely positioned drop
+overlay *above* the active item during a drag, so a drop handler on the item's
+own element never fires. That symptom points straight at modifying `pane.rs`,
+which is both invasive and unnecessary — the seam already exists.
+
+Note `handle_drop` receives `&self` and a bare `App`, with no context to reach
+the entity through, so an item that needs to mutate itself must hold a
+`WeakEntity<Self>` and defer the work.
+
+## `PaneAxis` keeps three arrays in lockstep
+
+`members`, `flexes`, and `bounding_boxes` are parallel. Any code that mutates
+`members` must maintain the other two — `insert_pane` and `remove` are the
+existing examples.
+
+`bounding_box_for_pane` opens with `debug_assert!(self.members.len() ==
+self.bounding_boxes.lock().len())`, so letting them drift panics in debug
+builds as soon as anything reads bounds between a structural change and the
+next layout pass. Since layout repairs the arrays on the following frame, the
+window where this bites is exactly one frame wide, which makes it easy to
+introduce and hard to reproduce.
