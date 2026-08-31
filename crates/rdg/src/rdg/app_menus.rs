@@ -2,7 +2,7 @@ use collab_ui::collab_panel;
 use gpui::{App, Menu, MenuItem, OsAction};
 use release_channel::ReleaseChannel;
 use terminal_view::terminal_panel;
-use rdg_actions::{Quit, assistant, debug_panel, dev, git_panel, project_panel};
+use rdg_actions::{Quit, debug_panel, dev, git_panel, project_panel};
 
 pub fn app_menus(cx: &mut App) -> Vec<Menu> {
     let mut view_items = vec![
@@ -43,7 +43,6 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
         MenuItem::action("Collab Panel", collab_panel::ToggleFocus),
         MenuItem::action("Terminal Panel", terminal_panel::Toggle),
         MenuItem::action("Debugger Panel", debug_panel::ToggleFocus),
-        MenuItem::action("Agent Panel", assistant::ToggleFocus),
         MenuItem::action("Git Panel", git_panel::ToggleFocus),
         MenuItem::separator(),
         MenuItem::action("Diagnostics", diagnostics::Deploy),
@@ -300,13 +299,8 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                     "View Release Notes Locally",
                     auto_update_ui::ViewReleaseNotesLocally,
                 ),
-                MenuItem::action("View Telemetry", rdg_actions::OpenTelemetryLog),
                 MenuItem::action("View Dependency Licenses", rdg_actions::OpenLicenses),
                 MenuItem::action("Show Welcome", onboarding::ShowWelcome),
-                MenuItem::separator(),
-                MenuItem::action("File Bug Report...", rdg_actions::feedback::FileBugReport),
-                MenuItem::action("Request Feature...", rdg_actions::feedback::RequestFeature),
-                MenuItem::action("Email Us...", rdg_actions::feedback::EmailZed),
                 MenuItem::separator(),
                 MenuItem::action(
                     "Documentation",
@@ -314,7 +308,12 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                         url: "https://zed.dev/docs".into(),
                     },
                 ),
-                MenuItem::action("Rdg Repository", feedback::OpenZedRepo),
+                MenuItem::action(
+                    "Rdg Repository",
+                    super::OpenBrowser {
+                        url: "https://github.com/RDG-Labs/rdg".into(),
+                    },
+                ),
                 MenuItem::action(
                     "Rdg Twitter",
                     super::OpenBrowser {
