@@ -295,6 +295,7 @@ dependencies = [
  "proptest",
  "quick-xml 0.38.3",
  "rand 0.9.4",
+ "rdg_env_vars",
  "regex",
  "release_channel",
  "reqwest_client",
@@ -323,7 +324,6 @@ dependencies = [
  "uuid",
  "watch",
  "web_search",
- "rdg_env_vars",
  "zlog",
  "zstd",
 ]
@@ -402,6 +402,7 @@ dependencies = [
  "language_model",
  "log",
  "project",
+ "rdg_credentials_provider",
  "release_channel",
  "remote",
  "reqwest_client",
@@ -416,7 +417,6 @@ dependencies = [
  "util",
  "uuid",
  "watch",
- "rdg_credentials_provider",
 ]
 
 [[package]]
@@ -528,6 +528,7 @@ dependencies = [
  "prompt_store",
  "proto",
  "rand 0.9.4",
+ "rdg_actions",
  "release_channel",
  "remote",
  "remote_connection",
@@ -560,7 +561,6 @@ dependencies = [
  "vim",
  "watch",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -607,10 +607,10 @@ dependencies = [
  "component",
  "gpui",
  "language_model",
+ "rdg_actions",
  "smallvec",
  "telemetry",
  "ui",
- "rdg_actions",
 ]
 
 [[package]]
@@ -1432,6 +1432,7 @@ dependencies = [
  "gpui",
  "markdown_preview",
  "prompt_store",
+ "rdg_actions",
  "release_channel",
  "semver",
  "serde",
@@ -1441,7 +1442,6 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -2145,6 +2145,7 @@ dependencies = [
  "project",
  "prompt_store",
  "rand 0.9.4",
+ "rdg_actions",
  "rpc",
  "serde_json",
  "settings",
@@ -2153,7 +2154,6 @@ dependencies = [
  "theme_settings",
  "ui",
  "util",
- "rdg_actions",
 ]
 
 [[package]]
@@ -2694,6 +2694,7 @@ dependencies = [
  "picker",
  "project",
  "proto",
+ "rdg_actions",
  "serde_json",
  "settings",
  "theme",
@@ -2702,7 +2703,6 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -3173,6 +3173,7 @@ dependencies = [
  "postage",
  "proxy_handshake",
  "rand 0.9.4",
+ "rdg_credentials_provider",
  "regex",
  "release_channel",
  "rpc",
@@ -3197,7 +3198,6 @@ dependencies = [
  "util",
  "windows 0.61.3",
  "worktree",
- "rdg_credentials_provider",
 ]
 
 [[package]]
@@ -3358,10 +3358,10 @@ dependencies = [
  "language",
  "language_model",
  "log",
+ "rdg_credentials_provider",
  "serde",
  "serde_json",
  "text",
- "rdg_credentials_provider",
  "zeta_prompt",
 ]
 
@@ -3424,6 +3424,7 @@ dependencies = [
  "prometheus",
  "prost",
  "rand 0.9.4",
+ "rdg_actions",
  "recent_projects",
  "release_channel",
  "remote",
@@ -3458,7 +3459,6 @@ dependencies = [
  "uuid",
  "workspace",
  "worktree",
- "rdg_actions",
  "zlog",
 ]
 
@@ -3481,6 +3481,7 @@ dependencies = [
  "notifications",
  "picker",
  "project",
+ "rdg_actions",
  "release_channel",
  "rpc",
  "serde",
@@ -3495,7 +3496,6 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -3557,6 +3557,7 @@ dependencies = [
  "picker",
  "postage",
  "project",
+ "rdg_actions",
  "serde",
  "settings",
  "telemetry",
@@ -3566,7 +3567,6 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -4835,13 +4835,13 @@ dependencies = [
  "inventory",
  "log",
  "paths",
+ "rdg_env_vars",
  "release_channel",
  "sqlez",
  "sqlez_macros",
  "tempfile",
  "util",
  "uuid",
- "rdg_env_vars",
 ]
 
 [[package]]
@@ -4918,6 +4918,7 @@ dependencies = [
  "picker",
  "pretty_assertions",
  "project",
+ "rdg_actions",
  "rpc",
  "schemars 1.0.4",
  "serde",
@@ -4938,7 +4939,6 @@ dependencies = [
  "unindent",
  "util",
  "workspace",
- "rdg_actions",
  "zlog",
 ]
 
@@ -5097,6 +5097,7 @@ dependencies = [
  "pretty_assertions",
  "project",
  "rand 0.9.4",
+ "rdg_actions",
  "serde_json",
  "settings",
  "text",
@@ -5106,7 +5107,6 @@ dependencies = [
  "unindent",
  "util",
  "workspace",
- "rdg_actions",
  "zlog",
 ]
 
@@ -5406,6 +5406,8 @@ dependencies = [
  "project",
  "pulldown-cmark 0.13.4",
  "rand 0.9.4",
+ "rdg_actions",
+ "rdg_credentials_provider",
  "regex",
  "release_channel",
  "semver",
@@ -5423,8 +5425,6 @@ dependencies = [
  "uuid",
  "workspace",
  "worktree",
- "rdg_actions",
- "rdg_credentials_provider",
  "zeta_prompt",
  "zlog",
  "zstd",
@@ -5572,6 +5572,7 @@ dependencies = [
  "multi_buffer",
  "paths",
  "project",
+ "rdg_actions",
  "regex",
  "settings",
  "telemetry",
@@ -5580,7 +5581,6 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "rdg_actions",
  "zeta_prompt",
 ]
 
@@ -5629,6 +5629,7 @@ dependencies = [
  "proptest",
  "proptest-derive",
  "rand 0.9.4",
+ "rdg_actions",
  "regex",
  "release_channel",
  "rope",
@@ -5667,7 +5668,6 @@ dependencies = [
  "uuid",
  "vim_mode_setting",
  "workspace",
- "rdg_actions",
  "zlog",
  "ztracing",
 ]
@@ -6280,6 +6280,7 @@ dependencies = [
  "num-format",
  "picker",
  "project",
+ "rdg_actions",
  "release_channel",
  "schemars 1.0.4",
  "semver",
@@ -6292,7 +6293,6 @@ dependencies = [
  "util",
  "vim_mode_setting",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -6401,11 +6401,11 @@ dependencies = [
  "client",
  "extension_host",
  "gpui",
+ "rdg_actions",
  "system_specs",
  "urlencoding",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -6440,6 +6440,7 @@ dependencies = [
  "picker_preview",
  "pretty_assertions",
  "project",
+ "rdg_actions",
  "serde_json",
  "settings",
  "theme",
@@ -6447,7 +6448,6 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "rdg_actions",
  "zlog",
 ]
 
@@ -7229,6 +7229,7 @@ dependencies = [
  "project",
  "prompt_store",
  "rand 0.9.4",
+ "rdg_actions",
  "release_channel",
  "remote_connection",
  "schemars 1.0.4",
@@ -7253,7 +7254,6 @@ dependencies = [
  "util",
  "watch",
  "workspace",
- "rdg_actions",
  "zlog",
  "ztracing",
 ]
@@ -7281,6 +7281,7 @@ dependencies = [
  "project",
  "proto",
  "rand 0.9.4",
+ "rdg_actions",
  "remote",
  "remote_connection",
  "serde",
@@ -7295,7 +7296,6 @@ dependencies = [
  "util",
  "watch",
  "workspace",
- "rdg_actions",
  "zeroize",
  "zlog",
  "ztracing",
@@ -8892,6 +8892,7 @@ dependencies = [
  "gpui",
  "language",
  "project",
+ "rdg_actions",
  "serde_json",
  "serde_json_lenient",
  "theme_settings",
@@ -8899,7 +8900,6 @@ dependencies = [
  "util",
  "util_macros",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -9401,6 +9401,7 @@ dependencies = [
  "notifications",
  "paths",
  "project",
+ "rdg_actions",
  "search",
  "serde_json",
  "settings",
@@ -9414,7 +9415,6 @@ dependencies = [
  "ui_input",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -9780,6 +9780,7 @@ dependencies = [
  "path",
  "project",
  "proto",
+ "rdg_actions",
  "release_channel",
  "semver",
  "serde_json",
@@ -9792,7 +9793,6 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "rdg_actions",
  "zlog",
 ]
 
@@ -10611,6 +10611,7 @@ dependencies = [
  "log",
  "markdown",
  "project",
+ "rdg_actions",
  "serde_json",
  "settings",
  "theme",
@@ -10619,7 +10620,6 @@ dependencies = [
  "urlencoding",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -11037,6 +11037,7 @@ version = "0.1.0"
 dependencies = [
  "command_palette_hooks",
  "gpui",
+ "rdg_actions",
  "rpc",
  "serde_json",
  "settings",
@@ -11044,7 +11045,6 @@ dependencies = [
  "theme_settings",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -11397,13 +11397,13 @@ dependencies = [
  "component",
  "futures-lite 1.13.0",
  "gpui",
+ "rdg_actions",
  "rpc",
  "sum_tree",
  "time",
  "ui",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -12119,6 +12119,7 @@ dependencies = [
  "notifications",
  "picker",
  "project",
+ "rdg_actions",
  "schemars 1.0.4",
  "serde",
  "settings",
@@ -12129,7 +12130,6 @@ dependencies = [
  "util",
  "vim_mode_setting",
  "workspace",
- "rdg_actions",
  "zlog",
 ]
 
@@ -12431,6 +12431,7 @@ dependencies = [
  "picker",
  "picker_preview",
  "project",
+ "rdg_actions",
  "rope",
  "serde_json",
  "settings",
@@ -12438,7 +12439,6 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -12462,6 +12462,7 @@ dependencies = [
  "outline",
  "pretty_assertions",
  "project",
+ "rdg_actions",
  "search",
  "serde",
  "serde_json",
@@ -12473,7 +12474,6 @@ dependencies = [
  "util",
  "workspace",
  "worktree",
- "rdg_actions",
 ]
 
 [[package]]
@@ -13370,6 +13370,7 @@ dependencies = [
  "language",
  "menu",
  "project",
+ "rdg_actions",
  "schemars 1.0.4",
  "serde",
  "serde_json",
@@ -13380,7 +13381,6 @@ dependencies = [
  "ui_input",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -13497,6 +13497,7 @@ version = "0.1.0"
 dependencies = [
  "gpui",
  "project",
+ "rdg_actions",
  "settings",
  "smallvec",
  "theme",
@@ -13504,7 +13505,6 @@ dependencies = [
  "ui",
  "windows 0.61.3",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -13914,6 +13914,7 @@ dependencies = [
  "pretty_assertions",
  "project",
  "rand 0.9.4",
+ "rdg_credentials_provider",
  "regex",
  "release_channel",
  "remote",
@@ -13943,7 +13944,6 @@ dependencies = [
  "wax",
  "which",
  "worktree",
- "rdg_credentials_provider",
  "zeroize",
  "zlog",
  "ztracing",
@@ -13998,6 +13998,7 @@ dependencies = [
  "pretty_assertions",
  "project",
  "rayon",
+ "rdg_actions",
  "schemars 1.0.4",
  "serde",
  "serde_json",
@@ -14011,7 +14012,6 @@ dependencies = [
  "util",
  "workspace",
  "worktree",
- "rdg_actions",
 ]
 
 [[package]]
@@ -14764,6 +14764,213 @@ dependencies = [
 ]
 
 [[package]]
+name = "rdg"
+version = "1.19.0"
+dependencies = [
+ "acp_thread",
+ "acp_tools",
+ "action_log",
+ "activity_indicator",
+ "agent",
+ "agent-client-protocol",
+ "agent_servers",
+ "agent_settings",
+ "agent_skills",
+ "agent_ui",
+ "anyhow",
+ "ashpd",
+ "askpass",
+ "assets",
+ "audio",
+ "auto_update",
+ "auto_update_ui",
+ "breadcrumbs",
+ "call",
+ "call_hierarchy",
+ "channel",
+ "chrono",
+ "clap",
+ "cli",
+ "client",
+ "clock",
+ "codestral",
+ "collab_ui",
+ "collections",
+ "command_palette",
+ "component_preview",
+ "copilot",
+ "copilot_chat",
+ "copilot_ui",
+ "crashes",
+ "dap_adapters",
+ "db",
+ "debug_adapter_extension",
+ "debugger_tools",
+ "debugger_ui",
+ "dev_container",
+ "diagnostics",
+ "edit_prediction",
+ "edit_prediction_ui",
+ "editor",
+ "encoding_selector",
+ "env_logger 0.11.8",
+ "etw_tracing",
+ "extension",
+ "extension_host",
+ "extensions_ui",
+ "feature_flags",
+ "feedback",
+ "file_finder",
+ "fs",
+ "futures 0.3.32",
+ "git",
+ "git_hosting_providers",
+ "git_ui",
+ "git_ui_core",
+ "go_to_line",
+ "gpui",
+ "gpui_platform",
+ "gpui_tokio",
+ "http_client",
+ "image",
+ "image_viewer",
+ "input_latency_ui",
+ "inspector_ui",
+ "install_cli",
+ "itertools 0.14.0",
+ "journal",
+ "json_schema_store",
+ "keymap_editor",
+ "language",
+ "language_extension",
+ "language_model",
+ "language_models",
+ "language_onboarding",
+ "language_selector",
+ "language_tools",
+ "languages",
+ "line_ending_selector",
+ "log",
+ "lsp_locations",
+ "markdown",
+ "markdown_preview",
+ "menu",
+ "migrator",
+ "mimalloc",
+ "miniprofiler_ui",
+ "node_runtime",
+ "notifications",
+ "onboarding",
+ "outline",
+ "outline_panel",
+ "parking_lot",
+ "paths",
+ "picker",
+ "pkg-config",
+ "pretty_assertions",
+ "profiling",
+ "project",
+ "project_panel",
+ "project_symbols",
+ "prompt_store",
+ "proto",
+ "rayon",
+ "rdg_actions",
+ "rdg_credentials_provider",
+ "rdg_env_vars",
+ "recent_projects",
+ "release_channel",
+ "remote",
+ "remote_server",
+ "repl",
+ "reqwest_client",
+ "rope",
+ "sandbox",
+ "search",
+ "semver",
+ "serde",
+ "serde_json",
+ "session",
+ "settings",
+ "settings_profile_selector",
+ "settings_ui",
+ "shellexpand",
+ "sidebar",
+ "smol",
+ "snippet_provider",
+ "snippets_ui",
+ "spin 0.10.0",
+ "svg_preview",
+ "sysinfo 0.37.2",
+ "system_specs",
+ "tab_switcher",
+ "tabular_data_preview",
+ "tasks_ui",
+ "telemetry",
+ "telemetry_events",
+ "tempfile",
+ "terminal_view",
+ "theme",
+ "theme_extension",
+ "theme_selector",
+ "theme_settings",
+ "time",
+ "time_format",
+ "title_bar",
+ "toolchain_selector",
+ "tracing",
+ "ui",
+ "ui_prompt",
+ "url",
+ "urlencoding",
+ "util",
+ "uuid",
+ "vim",
+ "vim_mode_setting",
+ "watch",
+ "web_search",
+ "web_search_providers",
+ "which_key",
+ "windows 0.61.3",
+ "windows_resources",
+ "workspace",
+ "zed-reqwest",
+ "zlog",
+ "zlog_settings",
+ "ztracing",
+]
+
+[[package]]
+name = "rdg_actions"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "schemars 1.0.4",
+ "serde",
+ "util",
+]
+
+[[package]]
+name = "rdg_credentials_provider"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "credentials_provider",
+ "futures 0.3.32",
+ "gpui",
+ "paths",
+ "release_channel",
+ "serde_json",
+]
+
+[[package]]
+name = "rdg_env_vars"
+version = "0.1.0"
+dependencies = [
+ "env_var",
+]
+
+[[package]]
 name = "rdrand"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14820,6 +15027,7 @@ dependencies = [
  "paths",
  "picker",
  "project",
+ "rdg_actions",
  "release_channel",
  "remote",
  "remote_connection",
@@ -14833,7 +15041,6 @@ dependencies = [
  "windows-registry 0.6.1",
  "workspace",
  "worktree",
- "rdg_actions",
 ]
 
 [[package]]
@@ -15145,6 +15352,7 @@ dependencies = [
  "nbformat",
  "picker",
  "project",
+ "rdg_actions",
  "remote",
  "runtimelib",
  "serde",
@@ -15165,7 +15373,6 @@ dependencies = [
  "util",
  "uuid",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -16116,6 +16323,7 @@ dependencies = [
  "pretty_assertions",
  "project",
  "proto",
+ "rdg_actions",
  "regex",
  "serde_json",
  "settings",
@@ -16129,7 +16337,6 @@ dependencies = [
  "util",
  "util_macros",
  "workspace",
- "rdg_actions",
  "ztracing",
 ]
 
@@ -16538,13 +16745,13 @@ dependencies = [
  "menu",
  "picker",
  "project",
+ "rdg_actions",
  "serde_json",
  "settings",
  "theme",
  "theme_settings",
  "ui",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -16588,6 +16795,8 @@ dependencies = [
  "platform_title_bar",
  "pretty_assertions",
  "project",
+ "rdg_actions",
+ "rdg_credentials_provider",
  "regex",
  "release_channel",
  "rodio",
@@ -16607,8 +16816,6 @@ dependencies = [
  "url",
  "util",
  "workspace",
- "rdg_actions",
- "rdg_credentials_provider",
 ]
 
 [[package]]
@@ -16744,6 +16951,7 @@ dependencies = [
  "pretty_assertions",
  "project",
  "prompt_store",
+ "rdg_actions",
  "recent_projects",
  "release_channel",
  "remote",
@@ -16760,7 +16968,6 @@ dependencies = [
  "unicode-segmentation",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -17620,9 +17827,9 @@ dependencies = [
  "gpui",
  "language",
  "multi_buffer",
+ "rdg_actions",
  "ui",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -18080,6 +18287,7 @@ dependencies = [
  "parking_lot",
  "pretty_assertions",
  "proto",
+ "rdg_actions",
  "schemars 1.0.4",
  "serde",
  "serde_json",
@@ -18087,7 +18295,6 @@ dependencies = [
  "sha2",
  "shellexpand",
  "util",
- "rdg_actions",
 ]
 
 [[package]]
@@ -18105,6 +18312,7 @@ dependencies = [
  "menu",
  "picker",
  "project",
+ "rdg_actions",
  "serde_json",
  "task",
  "tree-sitter",
@@ -18114,7 +18322,6 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -18241,6 +18448,7 @@ dependencies = [
  "menu",
  "pretty_assertions",
  "project",
+ "rdg_actions",
  "regex",
  "release_channel",
  "remote",
@@ -18259,7 +18467,6 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -18347,6 +18554,7 @@ dependencies = [
  "log",
  "picker",
  "project",
+ "rdg_actions",
  "serde_json",
  "settings",
  "telemetry",
@@ -18355,7 +18563,6 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -18590,6 +18797,7 @@ dependencies = [
  "livekit_client",
  "platform_title_bar",
  "project",
+ "rdg_actions",
  "recent_projects",
  "remote",
  "remote_connection",
@@ -18604,7 +18812,6 @@ dependencies = [
  "ui",
  "util",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -19881,6 +20088,7 @@ dependencies = [
  "picker",
  "project",
  "project_panel",
+ "rdg_actions",
  "regex",
  "release_channel",
  "schemars 1.0.4",
@@ -19900,7 +20108,6 @@ dependencies = [
  "util_macros",
  "vim_mode_setting",
  "workspace",
- "rdg_actions",
 ]
 
 [[package]]
@@ -22294,6 +22501,7 @@ dependencies = [
  "project",
  "proptest",
  "proptest-derive",
+ "rdg_actions",
  "remote",
  "schemars 1.0.4",
  "serde",
@@ -22313,7 +22521,6 @@ dependencies = [
  "url",
  "util",
  "uuid",
- "rdg_actions",
  "zlog",
 ]
 
@@ -22758,183 +22965,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zed"
-version = "1.19.0"
-dependencies = [
- "acp_thread",
- "acp_tools",
- "action_log",
- "activity_indicator",
- "agent",
- "agent-client-protocol",
- "agent_servers",
- "agent_settings",
- "agent_skills",
- "agent_ui",
- "anyhow",
- "ashpd",
- "askpass",
- "assets",
- "audio",
- "auto_update",
- "auto_update_ui",
- "breadcrumbs",
- "call",
- "call_hierarchy",
- "channel",
- "chrono",
- "clap",
- "cli",
- "client",
- "clock",
- "codestral",
- "collab_ui",
- "collections",
- "command_palette",
- "component_preview",
- "copilot",
- "copilot_chat",
- "copilot_ui",
- "crashes",
- "dap_adapters",
- "db",
- "debug_adapter_extension",
- "debugger_tools",
- "debugger_ui",
- "dev_container",
- "diagnostics",
- "edit_prediction",
- "edit_prediction_ui",
- "editor",
- "encoding_selector",
- "env_logger 0.11.8",
- "etw_tracing",
- "extension",
- "extension_host",
- "extensions_ui",
- "feature_flags",
- "feedback",
- "file_finder",
- "fs",
- "futures 0.3.32",
- "git",
- "git_hosting_providers",
- "git_ui",
- "git_ui_core",
- "go_to_line",
- "gpui",
- "gpui_platform",
- "gpui_tokio",
- "http_client",
- "image",
- "image_viewer",
- "input_latency_ui",
- "inspector_ui",
- "install_cli",
- "itertools 0.14.0",
- "journal",
- "json_schema_store",
- "keymap_editor",
- "language",
- "language_extension",
- "language_model",
- "language_models",
- "language_onboarding",
- "language_selector",
- "language_tools",
- "languages",
- "line_ending_selector",
- "log",
- "lsp_locations",
- "markdown",
- "markdown_preview",
- "menu",
- "migrator",
- "mimalloc",
- "miniprofiler_ui",
- "node_runtime",
- "notifications",
- "onboarding",
- "outline",
- "outline_panel",
- "parking_lot",
- "paths",
- "picker",
- "pkg-config",
- "pretty_assertions",
- "profiling",
- "project",
- "project_panel",
- "project_symbols",
- "prompt_store",
- "proto",
- "rayon",
- "recent_projects",
- "release_channel",
- "remote",
- "remote_server",
- "repl",
- "reqwest_client",
- "rope",
- "sandbox",
- "search",
- "semver",
- "serde",
- "serde_json",
- "session",
- "settings",
- "settings_profile_selector",
- "settings_ui",
- "shellexpand",
- "sidebar",
- "smol",
- "snippet_provider",
- "snippets_ui",
- "spin 0.10.0",
- "svg_preview",
- "sysinfo 0.37.2",
- "system_specs",
- "tab_switcher",
- "tabular_data_preview",
- "tasks_ui",
- "telemetry",
- "telemetry_events",
- "tempfile",
- "terminal_view",
- "theme",
- "theme_extension",
- "theme_selector",
- "theme_settings",
- "time",
- "time_format",
- "title_bar",
- "toolchain_selector",
- "tracing",
- "ui",
- "ui_prompt",
- "url",
- "urlencoding",
- "util",
- "uuid",
- "vim",
- "vim_mode_setting",
- "watch",
- "web_search",
- "web_search_providers",
- "which_key",
- "windows 0.61.3",
- "windows_resources",
- "workspace",
- "zed-reqwest",
- "rdg_actions",
- "rdg_credentials_provider",
- "rdg_env_vars",
- "zlog",
- "zlog_settings",
- "ztracing",
-]
-
-[[package]]
 name = "zed-font-kit"
 version = "0.14.1-zed"
 source = "git+https://github.com/zed-industries/font-kit?rev=94b0f28166665e8fd2f53ff6d268a14955c82269#94b0f28166665e8fd2f53ff6d268a14955c82269"
@@ -23039,36 +23069,6 @@ dependencies = [
  "x11rb",
  "xim-ctext",
  "xim-parser",
-]
-
-[[package]]
-name = "rdg_actions"
-version = "0.1.0"
-dependencies = [
- "gpui",
- "schemars 1.0.4",
- "serde",
- "util",
-]
-
-[[package]]
-name = "rdg_credentials_provider"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "credentials_provider",
- "futures 0.3.32",
- "gpui",
- "paths",
- "release_channel",
- "serde_json",
-]
-
-[[package]]
-name = "rdg_env_vars"
-version = "0.1.0"
-dependencies = [
- "env_var",
 ]
 
 [[package]]
