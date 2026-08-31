@@ -1,7 +1,7 @@
 use crate::{
-    CloseWindow, NewCenterTerminal, NewFile, NewTerminal, OpenInTerminal, OpenOptions,
-    OpenTerminal, OpenVisible, SplitDirection, ToggleFileFinder, ToggleProjectSymbols, ToggleZoom,
-    Workspace, WorkspaceItemBuilder, ZoomIn, ZoomOut,
+    CloseWindow, NewCenterTerminal, NewCenterTerminalSplit, NewFile, NewTerminal, OpenInTerminal,
+    OpenOptions, OpenTerminal, OpenVisible, SplitDirection, ToggleFileFinder, ToggleProjectSymbols,
+    ToggleZoom, Workspace, WorkspaceItemBuilder, ZoomIn, ZoomOut,
     focus_follows_mouse::FocusFollowsMouse as _,
     invalid_item_view::InvalidItemView,
     item::{
@@ -4346,6 +4346,22 @@ fn default_render_tab_bar_buttons(
                             .action(
                                 "New Center Terminal",
                                 NewCenterTerminal::default().boxed_clone(),
+                            )
+                            .action(
+                                "New Terminal to Right",
+                                NewCenterTerminalSplit {
+                                    direction: SplitDirection::Right,
+                                    local: false,
+                                }
+                                .boxed_clone(),
+                            )
+                            .action(
+                                "New Terminal Below",
+                                NewCenterTerminalSplit {
+                                    direction: SplitDirection::Down,
+                                    local: false,
+                                }
+                                .boxed_clone(),
                             )
                     }))
                 }),
