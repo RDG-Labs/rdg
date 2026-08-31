@@ -106,7 +106,7 @@ use workspace::{CloseProject, CloseWindow, RestoreBanner, with_active_or_new_wor
 use workspace::{Pane, notifications::DetachAndPromptErr};
 use rdg_actions::{
     About, GetMerch, OpenAccountSettings, OpenBrowser, OpenDocs, OpenProjectTasks,
-    OpenServerSettings, OpenSettingsFile, OpenStatusPage, OpenRdgUrl, Quit,
+    OpenServerSettings, OpenSettingsFile, OpenStatusPage, OpenZedUrl, Quit,
 };
 
 const DOCS_URL: &str = "https://zed.dev/docs/";
@@ -1047,7 +1047,7 @@ fn register_actions(
                 window.reset_debug_frame_overlay_stats();
             },
         )
-        .register_action(|_, action: &OpenRdgUrl, _, cx| {
+        .register_action(|_, action: &OpenZedUrl, _, cx| {
             OpenListener::global(cx).open(RawOpenRequest {
                 urls: vec![String::from(&*action.url)],
                 ..Default::default()
@@ -1269,15 +1269,15 @@ fn register_actions(
                 }
             }
         })
-        .register_action(|_, _: &install_cli::RegisterRdgScheme, window, cx| {
+        .register_action(|_, _: &install_cli::RegisterZedScheme, window, cx| {
             cx.spawn_in(window, async move |workspace, cx| {
                 install_cli::register_zed_scheme(cx).await?;
                 workspace.update_in(cx, |workspace, _, cx| {
-                    struct RegisterRdgScheme;
+                    struct RegisterZedScheme;
 
                     workspace.show_toast(
                         Toast::new(
-                            NotificationId::unique::<RegisterRdgScheme>(),
+                            NotificationId::unique::<RegisterZedScheme>(),
                             format!(
                                 "zed:// links will now open in {}.",
                                 ReleaseChannel::global(cx).display_name()

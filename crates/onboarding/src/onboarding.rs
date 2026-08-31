@@ -234,12 +234,12 @@ impl Onboarding {
             "signing_in"
         } else {
             match plan {
-                Some(Plan::RdgPro) => "pro",
-                Some(Plan::RdgProTrial) => "trial",
-                Some(Plan::RdgBusiness) => "business",
-                Some(Plan::RdgVip) => "vip",
-                Some(Plan::RdgStudent) => "student",
-                Some(Plan::RdgFree) | None => "free",
+                Some(Plan::ZedPro) => "pro",
+                Some(Plan::ZedProTrial) => "trial",
+                Some(Plan::ZedBusiness) => "business",
+                Some(Plan::ZedVip) => "vip",
+                Some(Plan::ZedStudent) => "student",
+                Some(Plan::ZedFree) | None => "free",
             }
         };
         let agents_installed = basics_page::FEATURED_AGENT_IDS
@@ -347,7 +347,7 @@ impl Render for Onboarding {
                                     .child(
                                         h_flex()
                                             .gap_4()
-                                            .child(Vector::square(VectorName::RdgLogo, rems(2.5)))
+                                            .child(Vector::square(VectorName::ZedLogo, rems(2.5)))
                                             .child(
                                                 v_flex()
                                                     .child(

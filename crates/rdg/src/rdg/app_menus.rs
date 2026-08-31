@@ -306,7 +306,7 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                 MenuItem::separator(),
                 MenuItem::action("File Bug Report...", rdg_actions::feedback::FileBugReport),
                 MenuItem::action("Request Feature...", rdg_actions::feedback::RequestFeature),
-                MenuItem::action("Email Us...", rdg_actions::feedback::EmailRdg),
+                MenuItem::action("Email Us...", rdg_actions::feedback::EmailZed),
                 MenuItem::separator(),
                 MenuItem::action(
                     "Documentation",
@@ -314,7 +314,7 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                         url: "https://zed.dev/docs".into(),
                     },
                 ),
-                MenuItem::action("Rdg Repository", feedback::OpenRdgRepo),
+                MenuItem::action("Rdg Repository", feedback::OpenZedRepo),
                 MenuItem::action(
                     "Rdg Twitter",
                     super::OpenBrowser {

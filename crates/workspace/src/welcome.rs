@@ -347,7 +347,7 @@ impl WelcomePage {
                 h_flex()
                     .gap_1p5()
                     .child(
-                        Icon::new(IconName::RdgAssistant)
+                        Icon::new(IconName::ZedAssistant)
                             .color(Color::Muted)
                             .size(IconSize::Small),
                     )
@@ -477,7 +477,7 @@ impl Render for WelcomePage {
                             .justify_center()
                             .mb_4()
                             .gap_4()
-                            .child(Vector::square(VectorName::RdgLogo, rems_from_px(45_f32)))
+                            .child(Vector::square(VectorName::ZedLogo, rems_from_px(45_f32)))
                             .child(
                                 v_flex().child(Headline::new(welcome_label)).child(
                                     Label::new("The editor for what's next")

@@ -49,7 +49,7 @@ shift $((OPTIND-1))
 
 
 # Get release channel
-pushd crates/zed
+pushd crates/rdg
 channel=$(<RELEASE_CHANNEL)
 export ZED_RELEASE_CHANNEL="${channel}"
 popd
@@ -93,7 +93,7 @@ cargo --config .cargo/bundle-config.toml build ${build_flag} --package zed --pac
 cargo --config .cargo/bundle-config.toml build ${build_flag} --package remote_server --target $target_triple
 
 echo "Creating application bundle"
-pushd crates/zed
+pushd crates/rdg
 cp Cargo.toml Cargo.toml.backup
 sed \
     -i.backup \
