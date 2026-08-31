@@ -1143,9 +1143,8 @@ pub struct DisableAiSettings {
 
 impl settings::Settings for DisableAiSettings {
     fn from_settings(content: &settings::SettingsContent) -> Self {
-        Self {
-            disable_ai: content.project.disable_ai.unwrap().0,
-        }
+        let _ = content;
+        Self { disable_ai: true }
     }
 }
 
