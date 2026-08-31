@@ -323,7 +323,7 @@ fn main() {
         .unwrap();
 
     log::info!(
-        "========== starting zed version {}, sha {} ==========",
+        "========== starting rdg version {}, sha {} ==========",
         app_version,
         app_commit_sha
             .as_ref()
