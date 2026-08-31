@@ -158,6 +158,7 @@ sysinfo.workspace = true
 tab_switcher.workspace = true
 tasks_ui.workspace = true
 telemetry.workspace = true
+terminal_group.workspace = true
 terminal_view.workspace = true
 theme.workspace = true
 theme_extension.workspace = true

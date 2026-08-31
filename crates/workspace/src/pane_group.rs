@@ -717,6 +717,9 @@ impl PaneAxis {
     fn insert_pane(&mut self, idx: usize, new_pane: &Entity<Pane>) {
         self.members.insert(idx, Member::Pane(new_pane.clone()));
         *self.flexes.lock() = vec![1.; self.members.len()];
+        // `bounding_boxes` is parallel to `members`; keeping it in step here
+        // means a caller may read bounds between a split and the next paint.
+        self.bounding_boxes.lock().insert(idx, None);
     }
 
     fn find_pane_at_border(&self, direction: SplitDirection) -> Option<&Entity<Pane>> {
@@ -762,11 +765,16 @@ impl PaneAxis {
             if let Some(idx) = remove_member {
                 self.members.remove(idx);
                 *self.flexes.lock() = vec![1.; self.members.len()];
+                let mut bounding_boxes = self.bounding_boxes.lock();
+                if idx < bounding_boxes.len() {
+                    bounding_boxes.remove(idx);
+                }
             }
 
             if self.members.len() == 1 {
                 let result = self.members.pop();
                 *self.flexes.lock() = vec![1.; self.members.len()];
+                self.bounding_boxes.lock().pop();
                 Ok(result)
             } else {
                 Ok(None)

@@ -2728,6 +2728,24 @@
     },
   },
   // Which-key popup settings
+  "terminal_workspace": {
+    // Gap between tiles, in pixels. Also the width of the resize gutter.
+    "gap": 6,
+    // Corner radius of a tile, in pixels.
+    "corner_radius": 6,
+    // Fewest columns a tile may have and still be usable. A split that would
+    // go below this is adapted to the other axis, or refused.
+    "min_tile_columns": 30,
+    // Fewest rows a tile may have and still be usable.
+    "min_tile_rows": 8,
+    // "adapt" tries the other axis before refusing, "refuse" does not,
+    // and "off" removes the guard.
+    "split_guard": "adapt",
+    // Fraction of the group a magnified tile fills.
+    "magnify_size": 0.92,
+    // Most tiles allowed in one group.
+    "max_tiles": 32,
+  },
   "which_key": {
     // Whether to show the which-key popup when holding down key combinations.
     "enabled": false,

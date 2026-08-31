@@ -4335,8 +4335,9 @@ fn default_render_tab_bar_buttons(
                 .anchor(Anchor::TopRight)
                 .with_handle(pane.new_item_context_menu_handle.clone())
                 .menu(move |window, cx| {
-                    Some(ContextMenu::build(window, cx, |menu, _, _| {
-                        menu.action("New File", NewFile.boxed_clone())
+                    Some(ContextMenu::build(window, cx, |menu, _, cx| {
+                        let menu = menu
+                            .action("New File", NewFile.boxed_clone())
                             .action("Open File", ToggleFileFinder::default().boxed_clone())
                             .separator()
                             .action("Search Project", DeploySearch::default().boxed_clone())
@@ -4362,7 +4363,13 @@ fn default_render_tab_bar_buttons(
                                     local: false,
                                 }
                                 .boxed_clone(),
-                            )
+                            );
+                        // The terminal grid lives in a downstream crate, so its
+                        // action is resolved by name rather than by type.
+                        match cx.build_action("terminal_group::New", None) {
+                            Ok(action) => menu.action("New Terminal Group", action),
+                            Err(_) => menu,
+                        }
                     }))
                 }),
         )
