@@ -566,10 +566,6 @@ impl MergeConflictIndicator {
         }
 
         let project = self.project.read(cx);
-        if project.is_via_collab() {
-            return;
-        }
-
         let paths = collect_conflicted_file_paths(project, cx);
         let current_paths_set: HashSet<String> = paths.iter().cloned().collect();
 

@@ -745,19 +745,7 @@ fn register_actions(
              window: &mut Window,
              cx: &mut Context<Workspace>| {
                 let project = workspace.project().clone();
-                // In a collab session the report buffer is visible to other
-                // participants, so attribute the data to this user's machine.
-                let reported_by = if project.read(cx).is_shared()
-                    || project.read(cx).is_via_collab()
-                {
-                    workspace
-                        .user_store()
-                        .read(cx)
-                        .current_user()
-                        .map(|user| user.username.to_string())
-                } else {
-                    None
-                };
+                let reported_by = None;
                 let report_data = input_latency_ui::snapshot_input_latency_report(
                     window,
                     reported_by,

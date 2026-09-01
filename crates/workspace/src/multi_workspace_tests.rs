@@ -1502,36 +1502,3 @@ async fn test_nearest_retained_workspace(cx: &mut TestAppContext) {
         );
     });
 }
-
-#[gpui::test]
-async fn test_nearest_retained_workspace_skips_disconnected_workspace(cx: &mut TestAppContext) {
-    init_test(cx);
-    let fs = FakeFs::new(cx.executor());
-    fs.insert_tree("/project-a", json!({})).await;
-    fs.insert_tree("/project-b", json!({})).await;
-
-    let project_a = Project::test(fs.clone(), ["/project-a".as_ref()], cx).await;
-    let project_b = Project::test(fs, ["/project-b".as_ref()], cx).await;
-    let key_a = project_a.read_with(cx, |project, cx| project.project_group_key(cx));
-    let (multi_workspace, cx) = setup_multi_workspace(&[project_a.clone(), project_b.clone()], cx);
-
-    project_b.update(cx, |project, cx| {
-        project.mark_as_collab_for_testing();
-        project.disconnected_from_host(cx);
-    });
-    cx.run_until_parked();
-
-    multi_workspace.update(cx, |multi_workspace, cx| {
-        let group_a_index = multi_workspace
-            .project_groups(cx)
-            .iter()
-            .position(|group| group.key == key_a)
-            .expect("project group A should exist");
-
-        assert_eq!(
-            multi_workspace.nearest_retained_workspace(group_a_index, &[], cx),
-            None,
-            "a disconnected workspace should not be selected as a fallback"
-        );
-    });
-}

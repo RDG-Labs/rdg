@@ -19,7 +19,7 @@ use crate::application_menu::{
 };
 
 use auto_update::AutoUpdateStatus;
-use client::{Client, UserStore};
+use client::Client;
 
 use gpui::{
     AnyElement, App, Context, Entity, Focusable, InteractiveElement, IntoElement, MouseButton,
@@ -154,7 +154,6 @@ pub fn init(cx: &mut App) {
 pub struct TitleBar {
     platform_titlebar: Entity<PlatformTitleBar>,
     project: Entity<Project>,
-    user_store: Entity<UserStore>,
     client: Arc<Client>,
     workspace: WeakEntity<Workspace>,
     multi_workspace: Option<WeakEntity<MultiWorkspace>>,
@@ -427,7 +426,6 @@ impl TitleBar {
             workspace: workspace.weak_handle(),
             multi_workspace,
             project,
-            user_store,
             client,
             _subscriptions: subscriptions,
             banner,
@@ -655,39 +653,7 @@ impl TitleBar {
             );
         }
 
-        let host = self.project.read(cx).host()?;
-        let host_user = self.user_store.read(cx).get_cached_user(host.user_id)?;
-        let participant_index = self
-            .user_store
-            .read(cx)
-            .participant_indices()
-            .get(&host_user.legacy_id)?;
-
-        Some(
-            Button::new("project_owner_trigger", host_user.username.clone())
-                .color(Color::Player(participant_index.0))
-                .label_size(LabelSize::Small)
-                .tab_index(0isize)
-                .tooltip(move |_, cx| {
-                    let tooltip_title = format!(
-                        "{} is sharing this project. Click to follow.",
-                        host_user.username
-                    );
-
-                    Tooltip::with_meta(tooltip_title, None, "Click to Follow", cx)
-                })
-                .on_click({
-                    let host_peer_id = host.peer_id;
-                    cx.listener(move |this, _, window, cx| {
-                        this.workspace
-                            .update(cx, |workspace, cx| {
-                                workspace.follow(host_peer_id, window, cx);
-                            })
-                            .log_err();
-                    })
-                })
-                .into_any_element(),
-        )
+        None
     }
 
     fn render_project_name(

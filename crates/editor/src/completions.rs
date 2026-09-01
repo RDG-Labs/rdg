@@ -216,7 +216,7 @@ impl Editor {
         // hence we do LSP request & edit on host side only — add formats to host's history.
         let push_to_lsp_host_history = true;
         // If this is not the host, append its history with new edits.
-        let push_to_client_history = project.read(cx).is_via_collab();
+        let push_to_client_history = false;
 
         let on_type_formatting = project.update(cx, |project, cx| {
             project.on_type_format(
