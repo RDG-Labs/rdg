@@ -92,6 +92,10 @@ jobs:
 
   build:
     name: Build ${{ matrix.name }}
+    needs:
+      - format
+      - clippy
+      - tests
     strategy:
       fail-fast: false
       matrix:

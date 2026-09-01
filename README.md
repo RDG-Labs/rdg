@@ -8,8 +8,8 @@ Rdg is a code editor built around a tiled terminal workspace. It is a fork of
 
 - **Terminals are first-class.** A directly manipulable tiled terminal grid lives next to
   your file tabs, sharing the project, file explorer, keymap, theme, and task system —
-  rather than being confined to a dock strip. See
-  [the terminal workspace PRD](./product/terminal-workspace-prd.md).
+  rather than being confined to a dock strip. See the
+  [terminal documentation](./docs/src/terminal.md).
 - **No AI.** The agent panel, model providers, edit prediction, and related settings are
   removed. Rdg does not talk to a language model.
 - **No account, no telemetry.** Sign-in and telemetry initialization are removed; Rdg starts
