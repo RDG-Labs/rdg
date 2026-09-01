@@ -1364,7 +1364,6 @@ impl Render for TerminalGroup {
             let weak_workspace = workspace.weak_handle();
             let render_cx = workspace::PaneRenderContext {
                 follower_states: &follower_states,
-                active_call: workspace.active_call(),
                 active_pane: &self.active_pane,
                 app_state: workspace.app_state(),
                 project: workspace.project(),
