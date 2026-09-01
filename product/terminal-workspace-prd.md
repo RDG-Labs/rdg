@@ -26,7 +26,7 @@ Three things are already true in this repo:
 2. `TerminalPanel` at `crates/terminal_view/src/terminal_panel.rs:79` **already owns a nested `center: PaneGroup`** inside a dock panel. A container hosting its own pane tree is a solved, shipped pattern here.
 3. `Pane` exposes `set_render_tab_bar`, `set_should_display_tab_bar`, `set_can_split`, `set_can_navigate` (`crates/workspace/src/pane.rs:831-876`). A pane can be reskinned into a bare tile with a slim header without forking `Pane`.
 
-Commit #4 (`NewCenterTerminalSplit`) is the beachhead. It produces tiles, but each tile is a full workspace pane carrying its own tab strip — which is neither the sketch nor the feel we want. This PRD defines what replaces it.
+The terminal group now provides the tiled terminal workspace. The earlier center-terminal split actions were removed once terminal groups became the supported tiled-terminal surface.t.
 
 ---
 
@@ -68,7 +68,7 @@ Jobs to be done:
 - **J5** "Come back tomorrow to the same wall of terminals." → layout restore.
 - **J6** "Edit the file this stack trace points at." → the grid is a tab, so the editor is one tab away with the same project panel.
 
-**Anti-persona.** The user who wants one maximized terminal. They already have the dock and `NewCenterTerminal`. The grid must not tax them: it is opt-in, never the default.
+**Anti-persona.** The user who wants one maximized terminal. They can still use `workspace::NewTerminal`. The grid must not tax them: it is opt-in, never the default.
 
 ---
 
@@ -168,7 +168,7 @@ Workspace pane tree  →  Pane  →  tab strip  →  TerminalGroup (Item)  →  
 | Entry point | Behavior |
 |---|---|
 | Command palette → "Terminal Group: New" | Opens a new group tab in the active workspace pane with one tile, focused, shell in the project root. |
-| Tab-bar `+` overflow menu | New entry "New Terminal Group", placed directly above the existing "New Terminal to Right/Below" items added in #4 (`pane.rs:4347`). |
+| Tab-bar `+` overflow menu | New entry "New Terminal Group". The obsolete center-terminal split entries are no longer shown. |
 | `workspace::NewTerminalGroup` action | Same as palette; bindable. |
 | Promote from dock | Dock terminal context menu → "Move to Grid": creates a group containing that terminal, moving it (not copying). Dock closes if it was the last terminal there. |
 
@@ -315,10 +315,9 @@ Both terminal surfaces exist. Routing is explicit so nothing is surprising:
 
 | Trigger | Destination |
 |---|---|
-| `terminal_panel::Toggle` (`ctrl-` `) | Dock, unchanged |
-| `workspace::NewTerminal` | Dock, unchanged |
-| `workspace::NewCenterTerminal` | Center tab, unchanged |
-| `workspace::NewCenterTerminalSplit` (from #4) | **Deprecated in favor of tile splits.** Kept as an alias for one release, then removed. |
+| `terminal_group::New` (`ctrl-` `) | Opens a new terminal-group tab. |
+| `workspace::NewTerminal` | Opens a standard terminal using the existing terminal workflow. |
+| Obsolete center-terminal actions | Removed; tile creation belongs to the terminal group. |
 | Task run, `terminal.dock` default | Dock, unchanged |
 | Task run **while a tile is focused** | New tile in the current group, auto-placed. Rerunning the same task reuses that tile (Zed's existing reuse semantics) — which does **not** violate TG-1, since it replaces the terminal rather than stacking one. |
 | "Run in grid" from the task picker | Explicit new tile |
@@ -479,7 +478,7 @@ Telemetry and account connectivity were deliberately removed from this fork (com
 
 | Phase | Scope | Exit criteria |
 |---|---|---|
-| **0 — done** | `NewCenterTerminalSplit` (#4) | Shipped. Deprecated by Phase 1. |
+| **0 — done** | Terminal-group foundation | Shipped. The obsolete center-terminal split actions were removed after the terminal group became available. | |
 | **1 — Foundation** | `TerminalGroup` item; tile tree; split/close/focus/resize; **split guard**; slim headers; layout persistence; keymap | Ship gate 1, 2, 4, 6. A grid is usable daily without drag or magnify. |
 | **2 — Direct manipulation** | Drag to rearrange with all three drop zones; magnify; swap bindings; equalize | Ship gate 3. Feature-complete vs. the sketch. |
 | **3 — Polish & performance** | Repaint tiering; PTY coalescing; deferred spawn; status dots; title resolution; accessibility; docs | Ship gate 5. All §8 thresholds met. |
@@ -764,7 +763,7 @@ Worth recording *why* the refusal fired at all, because the numbers are not obvi
 
 Found by asking the obvious question: *with a group open, how do I add a terminal to it by clicking?*
 
-There was no answer. `cmd-d` worked, but the tab bar's `+` belongs to the **workspace pane**, so every entry in it — New Terminal, New Center Terminal, New Terminal Group — creates something *outside* the group. A mouse-only user could open a grid and never grow it.
+There was no answer. `cmd-d` worked, but the tab bar's `+` belongs to the **workspace pane**, so the remaining New Terminal action creates something *outside* the group. A mouse-only user could open a grid and never grow it. it.
 
 **Fixed:** every tile header now carries a `+` button that adds a tile beside it, routed through the same guarded split as the keyboard. It sits left of magnify and close, so the three tile actions read as one set.
 
