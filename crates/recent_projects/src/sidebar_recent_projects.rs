@@ -9,18 +9,14 @@ use picker::{
     Picker, PickerDelegate,
     highlighted_match_with_paths::{HighlightedMatch, HighlightedMatchWithPaths},
 };
-use remote::RemoteConnectionOptions;
 use ui::{ButtonLike, KeyBinding, ListItem, ListItemSpacing, Tooltip, prelude::*};
 use util::{ResultExt, paths::PathExt};
 use workspace::{
-    MultiWorkspace, OpenMode, OpenOptions, ProjectGroupKey, RecentWorkspace,
-    SerializedWorkspaceLocation, Workspace, WorkspaceDb, notifications::DetachAndPromptErr,
+    MultiWorkspace, OpenMode, ProjectGroupKey, RecentWorkspace, SerializedWorkspaceLocation,
+    Workspace, WorkspaceDb,
 };
 
-use rdg_actions::OpenRemote;
-use settings::Settings;
-
-use crate::{highlights_for_path, icon_for_remote_connection, open_remote_project};
+use crate::{highlights_for_path, icon_for_remote_connection};
 
 pub struct SidebarRecentProjects {
     pub picker: Entity<Picker<SidebarRecentProjectsDelegate>>,
@@ -123,10 +119,12 @@ pub struct SidebarRecentProjectsDelegate {
 
 impl SidebarRecentProjectsDelegate {
     pub fn set_workspaces(&mut self, workspaces: Vec<RecentWorkspace>) {
-        self.has_any_non_local_projects = workspaces
-            .iter()
-            .any(|workspace| !matches!(workspace.location, SerializedWorkspaceLocation::Local));
-        self.workspaces = workspaces;
+        // Remote entries can still be present in the database from earlier
+        // versions; there is no longer any way to open one.
+        self.workspaces = workspaces
+            .into_iter()
+            .filter(|workspace| matches!(workspace.location, SerializedWorkspaceLocation::Local))
+            .collect();
     }
 }
 
@@ -229,10 +227,6 @@ impl PickerDelegate for SidebarRecentProjectsDelegate {
             return;
         };
 
-        let Some(workspace) = self.workspace.upgrade() else {
-            return;
-        };
-
         match &recent_workspace.location {
             SerializedWorkspaceLocation::Local => {
                 if let Some(handle) = window.window_handle().downcast::<MultiWorkspace>() {
@@ -249,32 +243,7 @@ impl PickerDelegate for SidebarRecentProjectsDelegate {
                     });
                 }
             }
-            SerializedWorkspaceLocation::Remote(connection) => {
-                let mut connection = connection.clone();
-                workspace.update(cx, |workspace, cx| {
-                    let app_state = workspace.app_state().clone();
-                    let replace_window = window.window_handle().downcast::<MultiWorkspace>();
-                    let open_options = OpenOptions {
-                        requesting_window: replace_window,
-                        ..Default::default()
-                    };
-                    if let RemoteConnectionOptions::Ssh(connection) = &mut connection {
-                        crate::RemoteSettings::get_global(cx)
-                            .fill_connection_options_from_settings(connection);
-                    };
-                    let paths = recent_workspace.paths.paths().to_vec();
-                    cx.spawn_in(window, async move |_, cx| {
-                        open_remote_project(connection.clone(), paths, app_state, open_options, cx)
-                            .await
-                    })
-                    .detach_and_prompt_err(
-                        "Failed to open project",
-                        window,
-                        cx,
-                        |_, _, _| None,
-                    );
-                });
-            }
+            SerializedWorkspaceLocation::Remote(_) => {}
         }
         cx.emit(DismissEvent);
     }
@@ -407,34 +376,6 @@ impl PickerDelegate for SidebarRecentProjectsDelegate {
                             cx.emit(DismissEvent);
                         }))
                 })
-                .child(
-                    ButtonLike::new("open_remote_folder")
-                        .child(
-                            h_flex()
-                                .w_full()
-                                .gap_1()
-                                .justify_between()
-                                .child(Label::new("Open Remote Folder"))
-                                .child(KeyBinding::for_action(
-                                    &OpenRemote {
-                                        from_existing_connection: false,
-                                        create_new_window: Some(false),
-                                    },
-                                    cx,
-                                )),
-                        )
-                        .on_click(cx.listener(|_, _, window, cx| {
-                            window.dispatch_action(
-                                OpenRemote {
-                                    from_existing_connection: false,
-                                    create_new_window: Some(false),
-                                }
-                                .boxed_clone(),
-                                cx,
-                            );
-                            cx.emit(DismissEvent);
-                        })),
-                )
                 .into_any(),
         )
     }
