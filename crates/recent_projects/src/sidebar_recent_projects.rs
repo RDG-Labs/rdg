@@ -10,7 +10,6 @@ use picker::{
     highlighted_match_with_paths::{HighlightedMatch, HighlightedMatchWithPaths},
 };
 use remote::RemoteConnectionOptions;
-use settings::Settings;
 use ui::{ButtonLike, KeyBinding, ListItem, ListItemSpacing, Tooltip, prelude::*};
 use util::{ResultExt, paths::PathExt};
 use workspace::{
@@ -19,6 +18,7 @@ use workspace::{
 };
 
 use rdg_actions::OpenRemote;
+use settings::Settings;
 
 use crate::{highlights_for_path, icon_for_remote_connection, open_remote_project};
 

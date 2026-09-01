@@ -88,9 +88,6 @@ rustup target add $target_triple
 
 echo "Compiling rdg binaries"
 cargo --config .cargo/bundle-config.toml build ${build_flag} --package rdg --package cli --target $target_triple
-# Build remote_server in separate invocation to prevent feature unification from other crates
-# from influencing dynamic libraries required by it.
-cargo --config .cargo/bundle-config.toml build ${build_flag} --package remote_server --target $target_triple
 
 echo "Creating application bundle"
 pushd crates/rdg
@@ -307,11 +304,6 @@ function upload_debug_symbols() {
             cat target/dsymutil.log
             exit 1
         fi
-        if ! dsymutil --flat "target/${target_triple}/${target_dir}/remote_server" 2> target/dsymutil.log; then
-            echo "dsymutil failed"
-            cat target/dsymutil.log
-            exit 1
-        fi
         # note: this uploads the unstripped binary which is needed because it contains
         # .eh_frame data for stack unwinding. see https://github.com/getsentry/symbolic/issues/783
         # Try uploading up to 3 times
@@ -319,7 +311,7 @@ function upload_debug_symbols() {
             echo "Sentry upload attempt $attempt..."
             if sentry-cli debug-files upload --include-sources --wait -p zed -o zed-dev \
                 "target/${target_triple}/${target_dir}/rdg.dwarf" \
-                "target/${target_triple}/${target_dir}/remote_server.dwarf"; then
+                "target/${target_triple}/${target_dir}/rdg.dwarf"; then
                 break
             else
                 echo "Sentry upload failed on attempt $attempt"
@@ -340,5 +332,3 @@ cp target/${target_triple}/${target_dir}/rdg "${app_path}/Contents/MacOS/rdg"
 cp target/${target_triple}/${target_dir}/cli "${app_path}/Contents/MacOS/cli"
 sign_app_binaries
 
-sign_binary "target/$target_triple/release/remote_server"
-gzip -f --stdout --best target/$target_triple/release/remote_server > target/zed-remote-server-macos-$arch_suffix.gz
