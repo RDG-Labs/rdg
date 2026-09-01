@@ -16,7 +16,6 @@ doctest = false
 default = []
 
 test-support = [
-    "call/test-support",
     "client/test-support",
 
     "gpui/test-support",
@@ -61,7 +60,6 @@ rdg_actions.workspace = true
 arrayvec = "0.7.6"
 
 [dev-dependencies]
-call = { workspace = true, features = ["test-support"] }
 client = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["test-support"] }
 project = { workspace = true, features = ["test-support"] }
