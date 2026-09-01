@@ -31,25 +31,56 @@ jobs:
         run: |
           set -euo pipefail
 
-          version="$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[] | select(.name == "rdg") | .version')"
           tag="$GITHUB_REF_NAME"
+          version="${tag#v}"
 
-          if [[ "$tag" == "v${version}" ]]; then
-            channel=stable
-          elif [[ "$tag" == "v${version}-pre" ]]; then
+          if [[ "$version" == *-pre ]]; then
+            version="${version%-pre}"
             channel=preview
           else
-            echo "Tag $tag does not match Rdg version $version. Expected v${version} or v${version}-pre." >&2
-            exit 1
+            channel=stable
           fi
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "channel=$channel" >> "$GITHUB_OUTPUT"
 
-  build_linux:
-    name: Build Linux x86_64
+  create_release:
+    name: Create GitHub release
     needs: validate_tag
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          repo="$GITHUB_REPOSITORY"
+
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            exit 0
+          elif [[ "$RELEASE_CHANNEL" == "preview" ]]; then
+            gh release create "$tag" --repo "$repo" \
+              --title "Rdg ${tag#v}" \
+              --generate-notes \
+              --prerelease
+          else
+            gh release create "$tag" --repo "$repo" \
+              --title "Rdg ${tag#v}" \
+              --generate-notes
+          fi
+
+  build_linux:
+    name: Build Linux x86_64
+    needs:
+      - validate_tag
+      - create_release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
     env:
       RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
@@ -75,16 +106,16 @@ jobs:
           cp LICENSE-APACHE LICENSE-GPL dist/rdg/
           tar -C dist -czf rdg-linux-x86_64.tar.gz rdg
 
-      - name: Upload Linux package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: rdg-linux-x86_64
-          path: rdg-linux-x86_64.tar.gz
-          if-no-files-found: error
+      - name: Upload Linux package to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" rdg-linux-x86_64.tar.gz --repo "$GITHUB_REPOSITORY" --clobber
 
   build_macos:
     name: Build macOS ${{ matrix.arch }}
-    needs: validate_tag
+    needs:
+      - validate_tag
+      - create_release
     strategy:
       fail-fast: false
       matrix:
@@ -96,6 +127,8 @@ jobs:
             runner: macos-14
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
     env:
       RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
@@ -145,17 +178,19 @@ jobs:
           EOF
           ditto -c -k --sequesterRsrc --keepParent "$app_dir" "rdg-macos-${{ matrix.arch }}.zip"
 
-      - name: Upload macOS package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: rdg-macos-${{ matrix.arch }}
-          path: rdg-macos-${{ matrix.arch }}.zip
-          if-no-files-found: error
+      - name: Upload macOS package to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" "rdg-macos-${{ matrix.arch }}.zip" --repo "$GITHUB_REPOSITORY" --clobber
 
   build_windows:
     name: Build Windows x86_64
-    needs: validate_tag
+    needs:
+      - validate_tag
+      - create_release
     runs-on: windows-2022
+    permissions:
+      contents: write
     env:
       RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
@@ -187,56 +222,7 @@ jobs:
 
           Compress-Archive -Path "$packageDir\*" -DestinationPath "rdg-windows-x86_64.zip" -Force
 
-      - name: Upload Windows package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: rdg-windows-x86_64
-          path: rdg-windows-x86_64.zip
-          if-no-files-found: error
-
-  publish_release:
-    name: Publish GitHub release
-    needs:
-      - validate_tag
-      - build_linux
-      - build_macos
-      - build_windows
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-    steps:
-      - name: Download release packages
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          path: artifacts
-
-      - name: Collect release assets
-        run: |
-          set -euo pipefail
-          mkdir -p release-assets
-          find artifacts -type f -name '*.zip' -o -name '*.tar.gz' | while read -r asset; do
-            cp "$asset" release-assets/
-          done
-          ls -lh release-assets
-
-      - name: Create or update GitHub release
+      - name: Upload Windows package to release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
-        run: |
-          set -euo pipefail
-          tag="$GITHUB_REF_NAME"
-          repo="$GITHUB_REPOSITORY"
-
-          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
-            gh release upload "$tag" --repo "$repo" release-assets/* --clobber
-          elif [[ "$RELEASE_CHANNEL" == "preview" ]]; then
-            gh release create "$tag" --repo "$repo" release-assets/* \
-              --title "Rdg ${tag#v}" \
-              --generate-notes \
-              --prerelease
-          else
-            gh release create "$tag" --repo "$repo" release-assets/* \
-              --title "Rdg ${tag#v}" \
-              --generate-notes
-          fi
+        run: gh release upload "$GITHUB_REF_NAME" rdg-windows-x86_64.zip --repo "$GITHUB_REPOSITORY" --clobber
