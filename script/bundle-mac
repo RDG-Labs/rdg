@@ -103,7 +103,8 @@ sed \
 # Pass the same config as the build steps above. Without it cargo-bundle runs
 # with different rustflags (-Z share-generics), so none of those artifacts are
 # reusable and it recompiles the whole graph into a second fingerprint bucket.
-app_path=$(cargo --config .cargo/bundle-config.toml bundle ${build_flag} --target $target_triple --select-workspace-root | xargs)
+# The path is relative to crates/rdg, since this runs inside the pushd above.
+app_path=$(cargo --config ../../.cargo/bundle-config.toml bundle ${build_flag} --target $target_triple --select-workspace-root | xargs)
 
 mv Cargo.toml.backup Cargo.toml
 popd
