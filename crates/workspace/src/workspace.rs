@@ -9161,12 +9161,32 @@ impl Render for Workspace {
         let centered_layout = self.centered_layout
             && self.center.panes().len() == 1
             && self.active_item(cx).is_some();
+        let transparent_window = cx.theme().window_background_appearance()
+            != gpui::WindowBackgroundAppearance::Opaque;
+        // Default themes use opaque background colors, so leave room for the native backdrop.
+        const TRANSLUCENT_WINDOW_BACKGROUND_OPACITY: f32 = 0.8;
+        let workspace_background = if transparent_window {
+            cx.theme()
+                .colors()
+                .background
+                .opacity(TRANSLUCENT_WINDOW_BACKGROUND_OPACITY)
+        } else {
+            cx.theme().colors().background
+        };
+        let editor_background = if transparent_window {
+            cx.theme()
+                .colors()
+                .editor_background
+                .opacity(TRANSLUCENT_WINDOW_BACKGROUND_OPACITY)
+        } else {
+            cx.theme().colors().editor_background
+        };
         let render_padding = |size| {
             (size > 0.0).then(|| {
                 div()
                     .h_full()
                     .w(relative(size))
-                    .bg(cx.theme().colors().editor_background)
+                    .bg(editor_background)
                     .border_color(cx.theme().colors().pane_group_border)
             })
         };
@@ -9265,7 +9285,7 @@ impl Render for Workspace {
                     .child(
                         div()
                             .id("workspace")
-                            .bg(colors.background)
+                            .bg(workspace_background)
                             .relative()
                             .flex_1()
                             .w_full()
@@ -9599,7 +9619,7 @@ impl Render for Workspace {
                                     .absolute()
                                     .overflow_hidden()
                                     .border_color(colors.border)
-                                    .bg(colors.background)
+                                    .bg(workspace_background)
                                     .child(zoomed_view)
                                     .inset_0()
                                     .shadow_lg();
