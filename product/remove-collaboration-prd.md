@@ -88,7 +88,14 @@ Two things follow.
 
 ## 3. Phases
 
-Ordered by risk, each independently shippable and revertible. **Phase 1 alone delivers the build-determinism win**, which is the actual trigger for this work.
+Ordered by risk, each independently shippable and revertible.
+
+**Correction (2026-09-01):** an earlier draft claimed *"Phase 1 alone delivers the
+build-determinism win."* That was wrong. The WebRTC blob is pulled by `livekit_client`, not by
+`collab`, and `webrtc-sys` is still in `Cargo.lock` after Phase 1 shipped. Phase 1 delivered a
+build-*time* win — 42,892 lines gone and CI no longer compiling a server binary on every push —
+but the mid-build network fetch survives until **Phase 3**. The trigger for this work is not
+resolved until then.
 
 ### Phase 1 — Remove the collab server crate
 
@@ -96,21 +103,39 @@ Delete `crates/collab`. Nothing depends on it.
 
 **Exit:** `cargo check --workspace --all-targets` clean; workspace 42,892 lines lighter.
 
-### Phase 2 — Remove livekit and the WebRTC download
+### Phase 2 — Remove the collaboration UI
 
-Delete `livekit_api` and `livekit_client`; remove the `libwebrtc`/`livekit` dependencies. Reduce `call` to whatever survives without a media layer, or remove it if nothing does.
+**Reordered 2026-09-01.** This was Phase 3. The original order was wrong: it deleted
+`livekit_client` and `call` before `collab_ui` and `title_bar/collab.rs`, which are their
+*consumers*. Removing a supplier before its consumers leaves the workspace uncompilable, so
+the UI comes out first.
+
+Delete `crates/collab_ui` (6,797 lines) and `crates/title_bar/src/collab.rs` (783). Remove the
+`CollabPanel` registration and `ToggleFocus` action in `rdg.rs`, the `collab_ui::init` call in
+`main.rs`, and `render_collaborator_list` from `title_bar.rs`.
+
+`collab_ui` is a leaf — only `rdg` depends on it. `title_bar` **stays**; only its `collab.rs`
+comes out.
+
+**`git_ui` costs one line.** Every `call::` use in `git_panel.rs` already sits behind
+`#[cfg(feature = "call")]` with a `#[cfg(not(feature = "call"))]` fallback that exists and
+compiles. Dropping `features = ["call"]` from `rdg/Cargo.toml:82` removes call-participant
+commit attribution; commits are attributed to the local author only. No new code.
+
+**Exit:** no UI path reaches collaboration; `call` and the livekit crates are orphaned,
+depended on by nothing.
+
+### Phase 3 — Remove livekit, `call`, and the WebRTC download
+
+Delete `crates/call` (3,407), `crates/livekit_client` (4,248) and `crates/livekit_api` (497),
+now that Phase 2 has orphaned them. Remove the `libwebrtc`/`livekit` workspace dependencies.
 
 This is the phase that **kills the mid-build network fetch**.
 
+Stale livekit paths appear as fixture strings in `file_finder_tests.rs` (lines 5066–5097).
+They are test data, not references — they compile either way. Refresh them or leave them.
+
 **Exit:** no build script downloads anything; a clean checkout builds offline.
-
-### Phase 3 — Remove the collaboration UI
-
-Delete `collab_ui`, `title_bar/src/collab.rs`, the `CollabPanel` registration and `ToggleFocus` action in `rdg.rs`, and the `call::init` / `collab_ui::init` calls in `main.rs`. Remove the now-unreachable `client::SignIn` action.
-
-**`git_ui` follows from the decision above.** Since `call` is being removed outright, call-participant commit attribution goes with it: the three `call::ActiveCall` reads in `git_panel.rs` are deleted rather than stubbed. Commits are attributed to the local author only.
-
-**Exit:** no UI path reaches collaboration; `git_ui` no longer references `call`.
 
 ---
 
@@ -119,8 +144,9 @@ Delete `collab_ui`, `title_bar/src/collab.rs`, the `CollabPanel` registration an
 | Risk | Mitigation |
 |---|---|
 | `title_bar` is deleted by mistake | Explicit: only `collab.rs` is in scope. The crate stays |
-| `git_ui` commit attribution silently disappears | Resolved by decision, not left to Phase 3. It is removed deliberately, and noted here so its absence is not later mistaken for a regression |
-| `call` is more entangled than 3,407 lines suggests | Discovered in Phase 2, before any UI work. If it is entangled, stop after Phase 1 and still keep the build-determinism win |
+| `git_ui` commit attribution silently disappears | Resolved by decision, not left to a later phase. It is removed deliberately, and noted here so its absence is not later mistaken for a regression |
+| `call` is more entangled than 3,407 lines suggests | Phase 2 removes its UI consumers first, so by Phase 3 `call` should be orphaned. If it still has live callers then, that is the signal the estimate was wrong — stop and re-measure rather than forcing it |
+| Stopping after Phase 2 leaves the trigger unfixed | Explicit: the WebRTC fetch dies in Phase 3 and nowhere earlier. Phases 1 and 2 are code-size and reachability wins only |
 | Upstream merge divergence grows | Deleting whole crates conflicts more cleanly than editing them: "upstream changed a file we deleted" resolves once |
 | Scope is underestimated again | Each phase re-measures before starting. Phase boundaries are where estimates get corrected, not where they get defended |
 
