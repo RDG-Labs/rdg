@@ -1,8 +1,8 @@
 use collab_ui::collab_panel;
 use gpui::{App, Menu, MenuItem, OsAction};
+use rdg_actions::{Quit, debug_panel, dev, git_panel, project_panel};
 use release_channel::ReleaseChannel;
 use terminal_view::terminal_panel;
-use rdg_actions::{Quit, debug_panel, dev, git_panel, project_panel};
 
 pub fn app_menus(cx: &mut App) -> Vec<Menu> {
     let mut view_items = vec![
@@ -305,25 +305,13 @@ pub fn app_menus(cx: &mut App) -> Vec<Menu> {
                 MenuItem::action(
                     "Documentation",
                     super::OpenBrowser {
-                        url: "https://zed.dev/docs".into(),
+                        url: "https://github.com/RDG-Labs/rdg/tree/main/docs/src".into(),
                     },
                 ),
                 MenuItem::action(
                     "Rdg Repository",
                     super::OpenBrowser {
                         url: "https://github.com/RDG-Labs/rdg".into(),
-                    },
-                ),
-                MenuItem::action(
-                    "Rdg Twitter",
-                    super::OpenBrowser {
-                        url: "https://twitter.com/zeddotdev".into(),
-                    },
-                ),
-                MenuItem::action(
-                    "Join the Team",
-                    super::OpenBrowser {
-                        url: "https://zed.dev/jobs".into(),
                     },
                 ),
             ],

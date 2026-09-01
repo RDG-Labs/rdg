@@ -65,16 +65,12 @@ actions!(
         OpenServerSettings,
         /// Quits the application.
         Quit,
-        /// Shows information about Zed.
+        /// Shows information about Rdg.
         About,
         /// Opens the documentation website.
         OpenDocs,
         /// Views open source licenses.
         OpenLicenses,
-        /// Opens the Zed status page.
-        OpenStatusPage,
-        /// Opens the Zed merch store.
-        GetMerch,
         /// Opens the telemetry log.
         OpenTelemetryLog,
         /// Opens the performance profiler.

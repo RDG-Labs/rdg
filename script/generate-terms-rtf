@@ -2,9 +2,29 @@
 
 set -e
 
-if ! command -v pandoc &> /dev/null
-then
-    brew install pandoc   # Install pandoc using Homebrew
-fi
+# The macOS DMG (script/bundle-mac) and the Windows installer
+# (crates/rdg/resources/windows/rdg.iss) both display this RTF as the
+# click-through agreement. Rdg operates no service and has no terms of its own,
+# so the agreement shown is the license that actually governs the software.
+# Generated inline rather than via pandoc so the build has no external dependency.
+python3 - <<'PYEOF'
+import pathlib
 
-pandoc ./legal/terms.md -f markdown-smart -t rtf -o ./script/terms/terms.rtf --standalone
+source = pathlib.Path("LICENSE-GPL").read_text(encoding="utf-8")
+
+def escape(line: str) -> str:
+    out = []
+    for character in line:
+        if character in "\\{}":
+            out.append("\\" + character)
+        elif ord(character) < 128:
+            out.append(character)
+        else:
+            out.append(f"\\u{ord(character)}?")
+    return "".join(out)
+
+body = "\n".join(f"{escape(line)}\\par" for line in source.splitlines())
+rtf = "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Helvetica;}}\n\\fs20\n" + body + "\n}\n"
+
+pathlib.Path("script/terms/terms.rtf").write_text(rtf, encoding="ascii")
+PYEOF

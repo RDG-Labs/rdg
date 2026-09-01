@@ -1,11 +1,11 @@
 [package]
-description = "The fast, collaborative code editor."
+description = "A code editor built around a tiled terminal workspace."
 edition.workspace = true
 name = "rdg"
 version = "1.19.0"
 publish.workspace = true
 license = "GPL-3.0-or-later"
-authors = ["Rdg Team <hi@zed.dev>"]
+authors = ["Rdg Labs"]
 default-run = "rdg"
 
 [lints]

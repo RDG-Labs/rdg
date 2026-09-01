@@ -7,7 +7,7 @@ use std::{env, str::FromStr, sync::LazyLock};
 use gpui::{App, Global};
 use semver::Version;
 
-const ZED_DOCS_URL: &str = "https://zed.dev/docs";
+const ZED_DOCS_URL: &str = "https://github.com/RDG-Labs/rdg/tree/main/docs/src";
 
 /// stable | dev | nightly | preview
 pub static RELEASE_CHANNEL_NAME: LazyLock<String> = LazyLock::new(|| {

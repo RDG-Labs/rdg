@@ -31,11 +31,11 @@ use git_ui::solo_diff_view::{SoloDiffGitToolbar, SoloDiffStyleToolbar};
 use git_ui::staged_diff::StagedDiffToolbar;
 use git_ui::unstaged_diff::UnstagedDiffToolbar;
 use gpui::{
-    Action, App, AppContext as _, ClipboardItem, Context, DismissEvent,
-    Element, Entity, FocusHandle, Focusable, Image, ImageFormat, KeyBinding, ParentElement,
-    PathPromptOptions, PromptLevel, ReadGlobal, SharedString, Size, Task, TaskExt, TitlebarOptions,
-    UpdateGlobal, WeakEntity, Window, WindowBounds, WindowHandle, WindowKind, WindowOptions,
-    actions, image_cache, img, point, px, retain_all,
+    Action, App, AppContext as _, ClipboardItem, Context, DismissEvent, Element, Entity,
+    FocusHandle, Focusable, Image, ImageFormat, KeyBinding, ParentElement, PathPromptOptions,
+    PromptLevel, ReadGlobal, SharedString, Size, Task, TaskExt, TitlebarOptions, UpdateGlobal,
+    WeakEntity, Window, WindowBounds, WindowHandle, WindowKind, WindowOptions, actions,
+    image_cache, img, point, px, retain_all,
 };
 use image_viewer::ImageInfo;
 use language::Capability;
@@ -88,21 +88,23 @@ use uuid::Uuid;
 use vim_mode_setting::VimModeSetting;
 use workspace::notifications::{NotificationId, dismiss_app_notification, show_app_notification};
 
+use rdg_actions::{
+    About, OpenBrowser, OpenDocs, OpenProjectTasks, OpenServerSettings, OpenSettingsFile,
+    OpenZedUrl, Quit,
+};
 use workspace::{
-    AppState, MultiWorkspace, NewFile, NewWindow, OpenLog, Toast, Workspace,
-    WorkspaceSettings, create_and_open_local_file,
-    notifications::simple_message_notification::MessageNotification, open_new,
+    AppState, MultiWorkspace, NewFile, NewWindow, OpenLog, Toast, Workspace, WorkspaceSettings,
+    create_and_open_local_file, notifications::simple_message_notification::MessageNotification,
+    open_new,
 };
 use workspace::{CloseProject, CloseWindow, RestoreBanner, with_active_or_new_workspace};
 use workspace::{Pane, notifications::DetachAndPromptErr};
-use rdg_actions::{
-    About, GetMerch, OpenBrowser, OpenDocs, OpenProjectTasks,
-    OpenServerSettings, OpenSettingsFile, OpenStatusPage, OpenZedUrl, Quit,
-};
 
-const DOCS_URL: &str = "https://zed.dev/docs/";
-const STATUS_URL: &str = "https://status.zed.dev";
-const MERCH_URL: &str = "https://merch.zed.dev/";
+// Rdg publishes no documentation site, so user-facing help links point at the docs
+// carried in this repository. Anchors match the headings GitHub generates for them.
+const DOCS_URL: &str = "https://github.com/RDG-Labs/rdg/tree/main/docs/src";
+const LINUX_DOCS_URL: &str = "https://github.com/RDG-Labs/rdg/blob/main/docs/src/linux.md";
+const WINDOWS_DOCS_URL: &str = "https://github.com/RDG-Labs/rdg/blob/main/docs/src/windows.md";
 
 pub struct CrashHandler(pub Arc<crashes::Client>);
 
@@ -484,9 +486,6 @@ pub fn initialize_workspace(app_state: Arc<AppState>, cx: &mut App) {
                 })
                 .unwrap_or(true)
         });
-
-
-
     })
     .detach();
 
@@ -593,9 +592,9 @@ fn initialize_file_watcher(window: &mut Window, cx: &mut Context<Workspace>) {
             db::indoc! {r#"
             inotify_init returned {}
 
-            This may be due to system-wide limits on inotify instances. For troubleshooting see: https://zed.dev/docs/linux
+            This may be due to system-wide limits on inotify instances. For troubleshooting see: {}
             "#},
-            e
+            e, LINUX_DOCS_URL
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
@@ -607,7 +606,7 @@ fn initialize_file_watcher(window: &mut Window, cx: &mut Context<Workspace>) {
         cx.spawn(async move |_, cx| {
             if prompt.await == Ok(0) {
                 cx.update(|cx| {
-                    cx.open_url("https://zed.dev/docs/linux#could-not-start-inotify");
+                    cx.open_url(&format!("{LINUX_DOCS_URL}#could-not-start-inotify"));
                     cx.quit();
                 });
             }
@@ -624,9 +623,9 @@ fn initialize_file_watcher(window: &mut Window, cx: &mut Context<Workspace>) {
             db::indoc! {r#"
             ReadDirectoryChangesW initialization failed: {}
 
-            This may occur on network filesystems and WSL paths. For troubleshooting see: https://zed.dev/docs/windows
+            This may occur on network filesystems and WSL paths. For troubleshooting see: {}
             "#},
-            e
+            e, WINDOWS_DOCS_URL
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
@@ -638,7 +637,7 @@ fn initialize_file_watcher(window: &mut Window, cx: &mut Context<Workspace>) {
         cx.spawn(async move |_, cx| {
             if prompt.await == Ok(0) {
                 cx.update(|cx| {
-                    cx.open_url("https://zed.dev/docs/windows");
+                    cx.open_url(WINDOWS_DOCS_URL);
                     cx.quit()
                 });
             }
@@ -654,16 +653,12 @@ fn show_software_emulation_warning_if_needed(
 ) {
     if specs.is_software_emulated && std::env::var("ZED_ALLOW_EMULATED_GPU").is_err() {
         let (graphics_api, docs_url, open_url) = if cfg!(target_os = "windows") {
-            (
-                "DirectX",
-                "https://zed.dev/docs/windows",
-                "https://zed.dev/docs/windows",
-            )
+            ("DirectX", WINDOWS_DOCS_URL, WINDOWS_DOCS_URL.to_string())
         } else {
             (
                 "Vulkan",
-                "https://zed.dev/docs/linux",
-                "https://zed.dev/docs/linux#zed-fails-to-open-windows",
+                LINUX_DOCS_URL,
+                format!("{LINUX_DOCS_URL}#zed-fails-to-open-windows"),
             )
         };
         let message = format!(
@@ -688,7 +683,7 @@ fn show_software_emulation_warning_if_needed(
         cx.spawn(async move |_, cx| {
             if prompt.await == Ok(1) {
                 cx.update(|cx| {
-                    cx.open_url(open_url);
+                    cx.open_url(&open_url);
                     cx.quit();
                 });
             }
@@ -747,8 +742,6 @@ fn register_actions(
 ) {
     workspace
         .register_action(|_, _: &OpenDocs, _, cx| cx.open_url(DOCS_URL))
-        .register_action(|_, _: &OpenStatusPage, _, cx| cx.open_url(STATUS_URL))
-        .register_action(|_, _: &GetMerch, _, cx| cx.open_url(MERCH_URL))
         .register_action(
             |workspace: &mut Workspace,
              _: &input_latency_ui::DumpInputLatencyHistogram,
@@ -6088,7 +6081,7 @@ mod tests {
         );
     }
 
-        #[gpui::test]
+    #[gpui::test]
     async fn test_invalid_global_tasks_file_shows_notification_on_startup(
         cx: &mut gpui::TestAppContext,
     ) {
@@ -6153,7 +6146,7 @@ mod tests {
         );
     }
 
-        #[gpui::test]
+    #[gpui::test]
     async fn test_prefer_focused_window(cx: &mut gpui::TestAppContext) {
         let app_state = init_test(cx);
         let paths = [PathBuf::from(path!("/dir/document.txt"))];

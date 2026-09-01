@@ -73,6 +73,10 @@ pub fn compile(manifest: bool) -> Result<(), Box<dyn std::error::Error>> {
         version_parts.next().unwrap_or(0),
     );
 
+    // GPL-3.0 §4 and Apache-2.0 §4(c) require the upstream copyright notice to survive
+    // modification, so the Zed Industries line must stay in LegalCopyright even though the
+    // product is rebranded. Rdg's own claim is additive. CompanyName identifies the publisher
+    // of this build rather than the copyright holder, so it names Rdg alone.
     let rc_content = format!(
         r#"1 ICON "{icon_escaped}"
 {manifest_line}
@@ -94,8 +98,8 @@ BEGIN
             VALUE "FileVersion", "{pkg_version}\0"
             VALUE "ProductName", "{product_name}\0"
             VALUE "ProductVersion", "{product_version}\0"
-            VALUE "CompanyName", "Rdg Industries, Inc.\0"
-            VALUE "LegalCopyright", "Copyright 2022 - 2025 Rdg Industries, Inc.\0"
+            VALUE "CompanyName", "Rdg Labs\0"
+            VALUE "LegalCopyright", "Copyright 2022 - 2025 Zed Industries, Inc. Modifications copyright 2026 Rdg Labs.\0"
         END
     END
     BLOCK "VarFileInfo"
