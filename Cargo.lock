@@ -12094,7 +12094,6 @@ dependencies = [
  "theme_selector",
  "theme_settings",
  "time",
- "time_format",
  "title_bar",
  "toolchain_selector",
  "tracing",
