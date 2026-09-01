@@ -1,0 +1,242 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  validate_tag:
+    name: Validate release tag
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      channel: ${{ steps.release.outputs.channel }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          fetch-depth: 1
+
+      - name: Validate tag and determine channel
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[] | select(.name == "rdg") | .version')"
+          tag="$GITHUB_REF_NAME"
+
+          if [[ "$tag" == "v${version}" ]]; then
+            channel=stable
+          elif [[ "$tag" == "v${version}-pre" ]]; then
+            channel=preview
+          else
+            echo "Tag $tag does not match Rdg version $version. Expected v${version} or v${version}-pre." >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+  build_linux:
+    name: Build Linux x86_64
+    needs: validate_tag
+    runs-on: ubuntu-22.04
+    env:
+      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
+      RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+      ZED_RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Install Linux dependencies
+        run: ./script/linux
+
+      - name: Install WASI SDK
+        run: ./script/download-wasi-sdk
+
+      - name: Build Rdg
+        run: cargo build --release --package rdg
+
+      - name: Package Rdg
+        run: |
+          set -euo pipefail
+          mkdir -p dist/rdg
+          cp target/release/rdg dist/rdg/rdg
+          cp LICENSE-APACHE LICENSE-GPL dist/rdg/
+          tar -C dist -czf rdg-linux-x86_64.tar.gz rdg
+
+      - name: Upload Linux package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rdg-linux-x86_64
+          path: rdg-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  build_macos:
+    name: Build macOS ${{ matrix.arch }}
+    needs: validate_tag
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - arch: aarch64
+            runner: macos-14
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    env:
+      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
+      RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+      ZED_RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+          check-latest: true
+          package-manager-cache: false
+
+      - name: Build Rdg
+        run: cargo build --release --package rdg --target "${{ matrix.target }}"
+
+      - name: Package Rdg
+        run: |
+          set -euo pipefail
+          app_dir="dist/Rdg.app"
+          mkdir -p "$app_dir/Contents/MacOS"
+          cp "target/${{ matrix.target }}/release/rdg" "$app_dir/Contents/MacOS/Rdg"
+          chmod +x "$app_dir/Contents/MacOS/Rdg"
+          cat > "$app_dir/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>Rdg</string>
+              <key>CFBundleIdentifier</key>
+              <string>dev.rdg.Rdg</string>
+              <key>CFBundleName</key>
+              <string>Rdg</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${RELEASE_VERSION}</string>
+              <key>CFBundleVersion</key>
+              <string>${RELEASE_VERSION}</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.15.7</string>
+          </dict>
+          </plist>
+          EOF
+          ditto -c -k --sequesterRsrc --keepParent "$app_dir" "rdg-macos-${{ matrix.arch }}.zip"
+
+      - name: Upload macOS package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rdg-macos-${{ matrix.arch }}
+          path: rdg-macos-${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+  build_windows:
+    name: Build Windows x86_64
+    needs: validate_tag
+    runs-on: windows-2022
+    env:
+      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
+      RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+      ZED_RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Build Rdg
+        run: cargo build --release --package rdg
+
+      - name: Package Rdg
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $packageDir = "dist\rdg"
+          New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
+          Copy-Item "target\release\rdg.exe" "$packageDir\rdg.exe"
+          Copy-Item "LICENSE-APACHE" "$packageDir\LICENSE-APACHE"
+          Copy-Item "LICENSE-GPL" "$packageDir\LICENSE-GPL"
+
+          # These files are produced by rdg's build script and improve terminal support.
+          foreach ($file in @("conpty.dll", "OpenConsole.exe")) {
+              $source = "target\$file"
+              if (Test-Path $source) {
+                  Copy-Item $source "$packageDir\$file"
+              }
+          }
+
+          Compress-Archive -Path "$packageDir\*" -DestinationPath "rdg-windows-x86_64.zip" -Force
+
+      - name: Upload Windows package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rdg-windows-x86_64
+          path: rdg-windows-x86_64.zip
+          if-no-files-found: error
+
+  publish_release:
+    name: Publish GitHub release
+    needs:
+      - validate_tag
+      - build_linux
+      - build_macos
+      - build_windows
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download release packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          path: artifacts
+
+      - name: Collect release assets
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find artifacts -type f -name '*.zip' -o -name '*.tar.gz' | while read -r asset; do
+            cp "$asset" release-assets/
+          done
+          ls -lh release-assets
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          repo="$GITHUB_REPOSITORY"
+
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            gh release upload "$tag" --repo "$repo" release-assets/* --clobber
+          elif [[ "$RELEASE_CHANNEL" == "preview" ]]; then
+            gh release create "$tag" --repo "$repo" release-assets/* \
+              --title "Rdg ${tag#v}" \
+              --generate-notes \
+              --prerelease
+          else
+            gh release create "$tag" --repo "$repo" release-assets/* \
+              --title "Rdg ${tag#v}" \
+              --generate-notes
+          fi
