@@ -7,7 +7,7 @@ use crate::{
 use git::Clone as GitClone;
 use gpui::{
     Action, App, Context, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement,
-    ParentElement, Render, Styled, Task, TaskExt, Window, actions, img, transparent_black,
+    ParentElement, Render, Styled, Task, TaskExt, Window, actions, img,
 };
 use gpui::WeakEntity;
 use menu::{SelectNext, SelectPrevious};
@@ -401,13 +401,7 @@ impl Render for WelcomePage {
             "Welcome to Rdg"
         };
 
-        let background = if cx.theme().window_background_appearance()
-            == gpui::WindowBackgroundAppearance::Opaque
-        {
-            cx.theme().colors().editor_background
-        } else {
-            transparent_black()
-        };
+        let background = ui::window_background_color(cx.theme().colors().editor_background, cx);
 
         h_flex()
             .key_context("Welcome")

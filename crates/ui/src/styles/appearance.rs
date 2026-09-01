@@ -1,5 +1,17 @@
 use crate::prelude::*;
-use gpui::{App, WindowBackgroundAppearance};
+use gpui::{App, Hsla, WindowBackgroundAppearance};
+
+/// The opacity used for application surfaces when native window transparency is enabled.
+pub const TRANSLUCENT_BACKGROUND_OPACITY: f32 = 0.5;
+
+/// Applies the standard application-surface opacity for translucent windows.
+pub fn window_background_color(color: Hsla, cx: &mut App) -> Hsla {
+    if theme_is_transparent(cx) {
+        color.opacity(TRANSLUCENT_BACKGROUND_OPACITY)
+    } else {
+        color
+    }
+}
 
 /// Returns the [WindowBackgroundAppearance].
 fn window_appearance(cx: &mut App) -> WindowBackgroundAppearance {

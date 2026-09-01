@@ -4,7 +4,7 @@ use fs::Fs;
 use gpui::{
     Action, AnyElement, App, AppContext, AsyncWindowContext, Context, Entity, EventEmitter,
     FocusHandle, Focusable, Global, IntoElement, KeyContext, Render, ScrollHandle, SharedString,
-    Subscription, Task, WeakEntity, Window, actions, img, transparent_black,
+    Subscription, Task, WeakEntity, Window, actions, img,
 };
 use notifications::status_toast::StatusToast;
 use schemars::JsonSchema;
@@ -240,13 +240,7 @@ impl Onboarding {
 
 impl Render for Onboarding {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let background = if cx.theme().window_background_appearance()
-            == gpui::WindowBackgroundAppearance::Opaque
-        {
-            cx.theme().colors().editor_background
-        } else {
-            transparent_black()
-        };
+        let background = ui::window_background_color(cx.theme().colors().editor_background, cx);
 
         div()
             .image_cache(gpui::retain_all("onboarding-page"))

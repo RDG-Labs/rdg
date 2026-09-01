@@ -16,6 +16,7 @@ pub use crate::DynamicSpacing;
 pub use crate::animation::{AnimationDirection, AnimationDuration, DefaultAnimations};
 pub use crate::styles::{
     PlatformStyle, Severity, StyledTypography, TextSize, rems_from_px, vh, vw,
+    window_background_color,
 };
 pub use crate::traits::clickable::*;
 pub use crate::traits::disableable::*;
