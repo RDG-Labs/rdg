@@ -4,7 +4,7 @@ use fs::Fs;
 use gpui::{Action, App, IntoElement};
 use project::project_settings::ProjectSettings;
 use settings::{
-    BaseKeymap, Settings, update_settings_file,
+    BaseKeymap, Settings, WindowBackgroundContent, update_settings_file,
 };
 use theme::{Appearance, SystemAppearance, ThemeRegistry};
 use theme_settings::{ThemeAppearanceMode, ThemeName, ThemeSelection, ThemeSettings};
@@ -233,6 +233,46 @@ fn render_theme_section(tab_index: &mut isize, cx: &mut App) -> impl IntoElement
             ),
         });
     }
+}
+
+fn render_transparency_switch(tab_index: &mut isize, cx: &mut App) -> impl IntoElement {
+    let transparency_enabled =
+        cx.theme().window_background_appearance() != gpui::WindowBackgroundAppearance::Opaque;
+
+    SwitchField::new(
+        "onboarding-window-transparency",
+        Some("Transparent Window"),
+        Some("Use the native translucent window background".into()),
+        if transparency_enabled {
+            ui::ToggleState::Selected
+        } else {
+            ui::ToggleState::Unselected
+        },
+        {
+            let fs = <dyn Fs>::global(cx);
+            move |&selection, _, cx| {
+                let appearance = match selection {
+                    ToggleState::Selected => WindowBackgroundContent::Blurred,
+                    ToggleState::Unselected => WindowBackgroundContent::Opaque,
+                    ToggleState::Indeterminate => {
+                        return;
+                    }
+                };
+
+                update_settings_file(fs.clone(), cx, move |settings, _| {
+                    settings
+                        .theme
+                        .experimental_theme_overrides
+                        .get_or_insert_default()
+                        .window_background_appearance = Some(appearance);
+                });
+            }
+        },
+    )
+    .tab_index({
+        *tab_index += 1;
+        *tab_index - 1
+    })
 }
 
 fn render_telemetry_section(tab_index: &mut isize, cx: &App) -> impl IntoElement {
@@ -537,6 +577,7 @@ pub(crate) fn render_basics_page(cx: &mut App) -> impl IntoElement {
         .id("basics-page")
         .gap_6()
         .child(render_theme_section(&mut tab_index, cx))
+        .child(render_transparency_switch(&mut tab_index, cx))
         .child(render_base_keymap_section(&mut tab_index, cx))
         .child(render_import_settings_section(&mut tab_index, cx))
         .child(render_vim_mode_switch(&mut tab_index, cx))
