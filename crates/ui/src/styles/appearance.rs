@@ -5,7 +5,7 @@ use gpui::{App, Hsla, WindowBackgroundAppearance};
 pub const TRANSLUCENT_BACKGROUND_OPACITY: f32 = 0.5;
 
 /// Applies the standard application-surface opacity for translucent windows.
-pub fn window_background_color(color: Hsla, cx: &mut App) -> Hsla {
+pub fn window_background_color(color: Hsla, cx: &App) -> Hsla {
     if theme_is_transparent(cx) {
         color.opacity(TRANSLUCENT_BACKGROUND_OPACITY)
     } else {
@@ -14,7 +14,7 @@ pub fn window_background_color(color: Hsla, cx: &mut App) -> Hsla {
 }
 
 /// Returns the [WindowBackgroundAppearance].
-fn window_appearance(cx: &mut App) -> WindowBackgroundAppearance {
+fn window_appearance(cx: &App) -> WindowBackgroundAppearance {
     cx.theme().styles.window_background_appearance
 }
 
@@ -23,7 +23,7 @@ fn window_appearance(cx: &mut App) -> WindowBackgroundAppearance {
 ///
 /// Helps determine if you need to take extra steps to prevent
 /// transparent backgrounds.
-pub fn theme_is_transparent(cx: &mut App) -> bool {
+pub fn theme_is_transparent(cx: &App) -> bool {
     matches!(
         window_appearance(cx),
         WindowBackgroundAppearance::Transparent | WindowBackgroundAppearance::Blurred
