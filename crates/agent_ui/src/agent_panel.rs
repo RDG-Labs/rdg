@@ -1407,19 +1407,8 @@ impl AgentPanel {
                 let panel = cx.new(|cx| Self::new(workspace, window, cx));
 
                 panel.update(cx, |panel, cx| {
-                    let is_via_collab = panel.project.read(cx).is_via_collab();
-                    // Collab workspaces only support NativeAgent; clamp any
-                    // non-native choice so `set_active` can't bypass the
-                    // collab guard in `external_thread`.
-                    let clamp = |agent: Agent| {
-                        if is_via_collab && !agent.is_native() {
-                            Agent::NativeAgent
-                        } else {
-                            agent
-                        }
-                    };
-                    let global_fallback =
-                        global_last_used_agent.filter(|agent| !is_via_collab || agent.is_native());
+                    let clamp = |agent: Agent| agent;
+                    let global_fallback = global_last_used_agent;
 
                     if let Some(serialized_panel) = &serialized_panel {
                         panel.last_created_entry_kind = serialized_panel.last_created_entry_kind;
@@ -1659,12 +1648,8 @@ impl AgentPanel {
         &self.connection_store
     }
 
-    pub fn selected_agent(&self, cx: &App) -> Agent {
-        if self.project.read(cx).is_via_collab() {
-            Agent::NativeAgent
-        } else {
-            self.selected_agent.clone()
-        }
+    pub fn selected_agent(&self, _: &App) -> Agent {
+        self.selected_agent.clone()
     }
 
     fn should_restore_agent(&self, agent: &Agent, cx: &App) -> bool {
@@ -1911,16 +1896,12 @@ impl AgentPanel {
             return;
         };
 
-        let agent = if self.project.read(cx).is_via_collab() {
-            Agent::NativeAgent
+        // Draft text is stored locally, so use the selected agent if the original was uninstalled.
+        let agent = Agent::from(metadata.agent_id.clone());
+        let agent = if self.should_restore_agent(&agent, cx) {
+            agent
         } else {
-            // Draft text is stored locally, so use the selected agent if the original was uninstalled.
-            let agent = Agent::from(metadata.agent_id.clone());
-            if self.should_restore_agent(&agent, cx) {
-                agent
-            } else {
-                self.restorable_agent_selection(cx)
-            }
+            self.restorable_agent_selection(cx)
         };
         let initial_content = crate::draft_prompt_store::read(thread_id, cx).map(|blocks| {
             AgentInitialContent::ContentBlock {
@@ -1977,10 +1958,6 @@ impl AgentPanel {
     /// right away, if the panel is already showing the empty new-thread
     /// draft).
     pub fn select_agent(&mut self, agent: Agent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.project.read(cx).is_via_collab() && !agent.is_native() {
-            return;
-        }
-
         let showing_new_draft = matches!(
             (&self.base_view, &self.draft_thread),
             (BaseView::AgentThread { conversation_view }, Some(draft))
@@ -3234,9 +3211,7 @@ impl AgentPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> ThreadId {
-        let (agent, override_used) = if self.project.read(cx).is_via_collab() {
-            (Agent::NativeAgent, false)
-        } else if let Some(override_agent) = options.agent {
+        let (agent, override_used) = if let Some(override_agent) = options.agent {
             (override_agent, true)
         } else {
             (self.selected_agent.clone(), false)
@@ -4160,10 +4135,6 @@ impl AgentPanel {
             conversation_view.update(cx, |conversation_view, cx| {
                 conversation_view.set_work_dirs(new_work_dirs.clone(), cx);
             });
-        }
-
-        if self.project.read(cx).is_via_collab() {
-            return;
         }
 
         // Update metadata store so threads' path lists stay in sync with
@@ -5852,11 +5823,6 @@ impl AgentPanel {
             let is_agent_selected = move |agent: Agent| selected_agent == agent;
 
             let workspace = self.workspace.clone();
-            let is_via_collab = workspace
-                .update(cx, |workspace, cx| {
-                    workspace.project().read(cx).is_via_collab()
-                })
-                .unwrap_or_default();
 
             let focus_handle = focus_handle.clone();
             let agent_server_store = agent_server_store;
@@ -5986,7 +5952,6 @@ impl AgentPanel {
                                         |this| this.action(Box::new(NewThread)),
                                     )
                                     .icon_color(Color::Muted)
-                                    .disabled(is_via_collab)
                                     .handler({
                                         let workspace = workspace.clone();
                                         let agent_id = item.id.clone();
@@ -6876,7 +6841,7 @@ mod tests {
     use gpui::{App, Modifiers, TestAppContext, UpdateGlobal, VisualTestContext, px, size};
     use parking_lot::Mutex;
     use project::{Project, WorktreePaths};
-    use settings::{SettingsStore, WorkingDirectory};
+    use settings::SettingsStore;
     use std::any::Any;
 
     use serde_json::json;
@@ -7527,74 +7492,6 @@ mod tests {
                 "active terminal metadata should be restored into the loaded panel"
             );
         });
-    }
-
-    #[gpui::test]
-    async fn test_terminal_restore_working_directory_does_not_read_leased_workspace(
-        cx: &mut TestAppContext,
-    ) {
-        init_test(cx);
-        cx.update(|cx| {
-            agent::ThreadStore::init_global(cx);
-            language_model::LanguageModelRegistry::test(cx);
-
-            SettingsStore::update_global(cx, |store, cx| {
-                store.update_user_settings(cx, |settings| {
-                    settings
-                        .terminal
-                        .get_or_insert_default()
-                        .project
-                        .working_directory = Some(WorkingDirectory::AlwaysHome);
-                });
-            });
-        });
-
-        let fs = FakeFs::new(cx.executor());
-        let project = Project::test(fs, [], cx).await;
-        project.update(cx, |project, _cx| {
-            project.mark_as_collab_for_testing();
-        });
-        project.read_with(cx, |project, _cx| {
-            assert!(project.is_remote());
-        });
-
-        let multi_workspace =
-            cx.add_window(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
-        let workspace = multi_workspace
-            .read_with(cx, |multi_workspace, _cx| {
-                multi_workspace.workspace().clone()
-            })
-            .expect("multi workspace should have an active workspace");
-        let cx = &mut VisualTestContext::from_window(multi_workspace.into(), cx);
-        let panel = workspace.update_in(cx, |workspace, window, cx| {
-            cx.new(|cx| AgentPanel::new(workspace, window, cx))
-        });
-
-        assert_eq!(
-            workspace.read_with(cx, |workspace, cx| {
-                terminal_view::default_working_directory(workspace, cx)
-            }),
-            None
-        );
-
-        let metadata = TerminalThreadMetadata {
-            terminal_id: TerminalId::new(),
-            title: "Dev Server".into(),
-            custom_title: None,
-            created_at: Utc::now(),
-            worktree_paths: project.read_with(cx, |project, cx| project.worktree_paths(cx)),
-            remote_connection: None,
-            working_directory: None,
-        };
-        assert_eq!(metadata.working_directory, None);
-
-        let working_directory = workspace.update_in(cx, |workspace, _window, cx| {
-            panel
-                .read(cx)
-                .terminal_restore_working_directory(&metadata, Some(workspace), cx)
-        });
-
-        assert_eq!(working_directory, None);
     }
 
     #[gpui::test]

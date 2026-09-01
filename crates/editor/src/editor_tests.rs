@@ -41,6 +41,7 @@ use languages::{language, markdown_lang, rust_lang};
 use lsp::{CompletionParams, DEFAULT_LSP_REQUEST_TIMEOUT};
 use multi_buffer::{IndentGuide, MultiBuffer, MultiBufferOffset, MultiBufferOffsetUtf16, PathKey};
 use parking_lot::Mutex;
+use rpc::proto::PeerId;
 use pretty_assertions::{assert_eq, assert_ne};
 use project::{
     FakeFs, Project, ProjectPath,
