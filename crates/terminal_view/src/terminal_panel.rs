@@ -1440,7 +1440,7 @@ impl Render for FailedToSpawnTerminal {
             .p_4()
             .items_center()
             .justify_center()
-            .bg(cx.theme().colors().editor_background)
+            .bg(cx.theme().colors().terminal_background)
             .child(
                 v_flex()
                     .max_w_112()

@@ -524,6 +524,7 @@ impl ThemeSettings {
 
     const TRANSLUCENT_SURFACE_OPACITY: f32 = 0.5;
     const TRANSLUCENT_PANEL_OPACITY: f32 = 0.2;
+    const TRANSLUCENT_TERMINAL_OPACITY: f32 = 0.2;
     const TRANSLUCENT_BORDER_OPACITY: f32 = 0.35;
 
     fn apply_translucent_surface_opacity(theme: &mut Theme) {
@@ -536,7 +537,6 @@ impl ThemeSettings {
             &mut colors.background,
             &mut colors.surface_background,
             &mut colors.editor_background,
-            &mut colors.terminal_background,
             &mut colors.status_bar_background,
             &mut colors.title_bar_background,
             &mut colors.title_bar_inactive_background,
@@ -554,6 +554,11 @@ impl ThemeSettings {
         ] {
             color.a = color.a.min(Self::TRANSLUCENT_PANEL_OPACITY);
         }
+
+        colors.terminal_background.a = colors
+            .terminal_background
+            .a
+            .min(Self::TRANSLUCENT_TERMINAL_OPACITY);
 
         for color in [&mut colors.border, &mut colors.border_variant] {
             color.a = color.a.min(Self::TRANSLUCENT_BORDER_OPACITY);

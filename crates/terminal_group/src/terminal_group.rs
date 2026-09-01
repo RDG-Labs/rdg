@@ -1379,7 +1379,7 @@ impl Render for TerminalGroup {
             .relative()
             .track_focus(&self.focus_handle)
             .key_context("TerminalGroup")
-            .bg(cx.theme().colors().editor_background)
+            .bg(cx.theme().colors().terminal_background)
             .on_action(cx.listener(|this, _: &SplitRight, window, cx| {
                 this.split(SplitDirection::Right, window, cx)
             }))
@@ -1488,7 +1488,7 @@ fn render_magnified(
     div()
         .absolute()
         .inset_0()
-        .bg(cx.theme().colors().editor_background.opacity(0.6))
+        .bg(cx.theme().colors().terminal_background.opacity(0.6))
         .on_mouse_down(
             gpui::MouseButton::Left,
             cx.listener(|this, _, window, cx| {
@@ -1505,7 +1505,7 @@ fn render_magnified(
                 .overflow_hidden()
                 .border_1()
                 .border_color(cx.theme().colors().border_focused)
-                .bg(cx.theme().colors().editor_background)
+                .bg(cx.theme().colors().terminal_background)
                 .child(pane),
         )
         .into_any_element()
