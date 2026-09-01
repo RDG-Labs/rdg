@@ -150,6 +150,38 @@ They are test data, not references — they compile either way. Refresh them or 
 offline there. One unrelated Windows-only ConPTY fetch remains in `crates/rdg/build.rs`,
 inside `if cfg!(windows)`.
 
+### Phase 4 — Remove `AnyActiveCall`, `channel`, and the collab notification store
+
+**Scoped by measurement, 2026-09-01.** The PRD's Q4 named only the `AnyActiveCall`
+trait. Re-measuring after Phase 3 found two more pieces of live collaboration code that
+Q4 did not mention, and one it named that turned out not to be removable at all.
+
+`AnyActiveCall` (17 references, 2 files, zero implementors) comes out, and with it
+`AutoWatch`, `SharedScreen`, `join_channel`, `join_in_room_project`, and the follower
+*broadcast* path, which needed a `room_id` the trait was the only source of.
+
+`crates/channel` (1,930 lines) was **not** orphaned as expected — `channel::init` still
+ran at every launch and opened a `ChannelStore` against the collab server. Its only
+remaining consumers were the file finder's channel results and the notification store.
+
+`crates/notifications` splits: `notification_store.rs` (428 lines) is the collab feed and
+goes; `status_toast.rs` is the general UI toast and stays, which is what the ten crates
+depending on the crate actually use.
+
+**Exit:** no crate constructs a collab-server-backed store at launch.
+
+### Phase 5 — Remove the peer-follow subsystem
+
+Not built. After Phase 4, `CollaboratorId::PeerId` following is unreachable: the
+follow/unfollow proto handlers still register, but nothing can create a peer follower
+without a call. Removing it means `CollaboratorId::PeerId` itself, `follower_states`'
+peer half, and `FollowableItem`'s proto surface — roughly 77 references across
+`workspace`, `editor`, `item.rs`, and `debugger_ui`.
+
+**Following the agent must survive this.** `agent_ui` drives
+`workspace.follow(CollaboratorId::Agent, ...)` from eight call sites; the `Agent` variant
+and `follower_states` are load-bearing and are not in scope.
+
 ---
 
 ## 4. Risks
@@ -181,5 +213,7 @@ inside `if cfg!(windows)`.
 |---|---|---|
 | Q1 | Does `client::SignIn` still complete against upstream servers? Determines whether §1.1 can be strengthened from "unused" to "non-functional" | Nothing — the case does not depend on it |
 | ~~Q2~~ | ~~Keep call-participant commit attribution in `git_ui`?~~ **Resolved: no.** `call` is removed outright, so the attribution goes with it | — |
-| Q3 | `client` and `user_store` survive this removal. Are they still needed once collaboration is gone, or is that a fourth phase? | Post-Phase 3 |
-| Q4 | `workspace`'s `AnyActiveCall` trait (~20 sites) has no implementor after Phase 3. `try_global` returns `None` everywhere and the two `global()` calls are unreachable, so it is dead weight rather than a crash risk. Remove it with Q3 as Phase 4 | Post-Phase 3 |
+| ~~Q3~~ | ~~`client` and `user_store` survive this removal. Are they still needed?~~ **Resolved: they stay.** Measured 2026-09-01: 35 crates depend on `client`, including `editor`, `project`, `extension_host`, and `auto_update`. It is not a collaboration crate | — |
+| ~~Q4~~ | ~~`workspace`'s `AnyActiveCall` trait has no implementor after Phase 3.~~ **Done in Phase 4.** 17 references, 2 files. The estimate of "~20 sites" was right about the trait and wrong about the blast radius: removing it also killed `AutoWatch`, `SharedScreen`, and the follower broadcast path | — |
+| Q5 | The `xtask` crate emits 280 dead-code warnings, left over from #17 disabling the inherited GitHub workflows. Delete the unreachable workflow generators or re-enable them? | Nothing |
+| Q6 | `client::parse_zed_link` still recognises `zed://channel/...` URLs that nothing handles, so they are swallowed rather than opened in a browser. Pre-existing; fix with Phase 5? | Nothing |
