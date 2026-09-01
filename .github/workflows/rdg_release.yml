@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -12,6 +13,10 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   validate_tag:
     name: Validate release tag
@@ -19,68 +24,55 @@ jobs:
     outputs:
       version: ${{ steps.release.outputs.version }}
       channel: ${{ steps.release.outputs.channel }}
+      release_branch: ${{ steps.release.outputs.release_branch }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
-      - name: Validate tag and determine channel
+      - name: Validate tag and release branch
         id: release
         shell: bash
         run: |
           set -euo pipefail
 
           tag="$GITHUB_REF_NAME"
-          version="${tag#v}"
-
-          if [[ "$version" == *-pre ]]; then
-            version="${version%-pre}"
+          if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-rc\.([0-9]+)$ ]]; then
+            version="${BASH_REMATCH[1]}"
             channel=preview
-          else
+          elif [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            version="${BASH_REMATCH[1]}"
             channel=stable
-          fi
-
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "channel=$channel" >> "$GITHUB_OUTPUT"
-
-  create_release:
-    name: Create GitHub release
-    needs: validate_tag
-    runs-on: ubuntu-22.04
-    permissions:
-      contents: write
-    steps:
-      - name: Create or update GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
-        run: |
-          set -euo pipefail
-          tag="$GITHUB_REF_NAME"
-          repo="$GITHUB_REPOSITORY"
-
-          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
-            exit 0
-          elif [[ "$RELEASE_CHANNEL" == "preview" ]]; then
-            gh release create "$tag" --repo "$repo" \
-              --title "Rdg ${tag#v}" \
-              --generate-notes \
-              --prerelease
           else
-            gh release create "$tag" --repo "$repo" \
-              --title "Rdg ${tag#v}" \
-              --generate-notes
+            echo "Unsupported release tag: $tag. Use vX.Y.Z or vX.Y.Z-rc.N." >&2
+            exit 1
           fi
+
+          package_version="$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[] | select(.name == "rdg") | .version')"
+          if [[ "$package_version" != "$version" ]]; then
+            echo "Tag version $version does not match Rdg version $package_version." >&2
+            exit 1
+          fi
+
+          release_branch="release/v$version"
+          git fetch --no-tags origin "refs/heads/$release_branch:refs/remotes/origin/$release_branch"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "refs/remotes/origin/$release_branch"; then
+            echo "Tag $tag must point to a commit contained in $release_branch." >&2
+            exit 1
+          fi
+
+          {
+            echo "version=$version"
+            echo "channel=$channel"
+            echo "release_branch=$release_branch"
+          } >> "$GITHUB_OUTPUT"
 
   build_linux:
     name: Build Linux x86_64
-    needs:
-      - validate_tag
-      - create_release
+    needs: validate_tag
     runs-on: ubuntu-22.04
-    permissions:
-      contents: write
+    timeout-minutes: 90
     env:
       RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
@@ -109,18 +101,25 @@ jobs:
           mkdir -p dist/rdg
           cp target/release/rdg dist/rdg/rdg
           cp LICENSE-APACHE LICENSE-GPL dist/rdg/
+          case "$RELEASE_CHANNEL" in
+            stable) icon_source="crates/rdg/resources/app-icon.png" ;;
+            preview) icon_source="crates/rdg/resources/app-icon-preview.png" ;;
+            *) echo "Unsupported release channel: $RELEASE_CHANNEL" >&2; exit 1 ;;
+          esac
+          cp "$icon_source" dist/rdg/app-icon.png
           tar -C dist -czf rdg-linux-x86_64.tar.gz rdg
 
-      - name: Upload Linux package to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" rdg-linux-x86_64.tar.gz --repo "$GITHUB_REPOSITORY" --clobber
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rdg-linux-x86_64
+          path: rdg-linux-x86_64.tar.gz
+          if-no-files-found: error
+          retention-days: 30
 
   build_macos:
     name: Build macOS ${{ matrix.arch }}
-    needs:
-      - validate_tag
-      - create_release
+    needs: validate_tag
     strategy:
       fail-fast: false
       matrix:
@@ -132,18 +131,11 @@ jobs:
             runner: macos-14
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.runner }}
-    permissions:
-      contents: write
+    timeout-minutes: 120
     env:
       RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       ZED_RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
-      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
-      APPLE_NOTARIZATION_KEY: ${{ secrets.APPLE_NOTARIZATION_KEY }}
-      APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
-      APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -163,30 +155,11 @@ jobs:
           fi
           cargo build --release --package rdg --target "${{ matrix.target }}"
 
-      - name: Package, sign, and notarize Rdg
+      - name: Package Rdg app
         run: |
           set -euo pipefail
-
-          required_secrets=(
-            MACOS_CERTIFICATE
-            MACOS_CERTIFICATE_PASSWORD
-            MACOS_SIGNING_IDENTITY
-            APPLE_NOTARIZATION_KEY
-            APPLE_NOTARIZATION_KEY_ID
-            APPLE_NOTARIZATION_ISSUER_ID
-          )
-          for secret_name in "${required_secrets[@]}"; do
-            if [[ -z "${!secret_name:-}" ]]; then
-              echo "Missing required GitHub secret: $secret_name" >&2
-              exit 1
-            fi
-          done
-
           app_dir="dist/Rdg.app"
           iconset_dir="$RUNNER_TEMP/Rdg.iconset"
-          keychain_path="$RUNNER_TEMP/rdg-signing.keychain-db"
-          certificate_path="$RUNNER_TEMP/rdg-certificate.p12"
-          notary_key_path="$RUNNER_TEMP/rdg-notary-key.p8"
           mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources" "$iconset_dir"
 
           cp "target/${{ matrix.target }}/release/rdg" "$app_dir/Contents/MacOS/Rdg"
@@ -195,7 +168,7 @@ jobs:
           case "$RELEASE_CHANNEL" in
             stable) icon_source="crates/rdg/resources/app-icon@2x.png" ;;
             preview) icon_source="crates/rdg/resources/app-icon-preview@2x.png" ;;
-            *) echo "Unsupported macOS release channel: $RELEASE_CHANNEL" >&2; exit 1 ;;
+            *) echo "Unsupported release channel: $RELEASE_CHANNEL" >&2; exit 1 ;;
           esac
           for size in 16 32 128 256 512; do
             sips -z "$size" "$size" "$icon_source" --out "$iconset_dir/icon_${size}x${size}.png" >/dev/null
@@ -231,57 +204,21 @@ jobs:
           </plist>
           EOF
 
-          security create-keychain -p "$MACOS_CERTIFICATE_PASSWORD" "$keychain_path"
-          security default-keychain -s "$keychain_path"
-          security list-keychains -d user -s "$keychain_path"
-          security set-keychain-settings -lut 21600 "$keychain_path"
-          security unlock-keychain -p "$MACOS_CERTIFICATE_PASSWORD" "$keychain_path"
-          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$certificate_path"
-          security import "$certificate_path" -k "$keychain_path" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_CERTIFICATE_PASSWORD" "$keychain_path"
+          tar -C dist -czf "rdg-macos-${{ matrix.arch }}-app.tar.gz" Rdg.app
 
-          codesign --force --timestamp --options runtime \
-            --keychain "$keychain_path" \
-            --entitlements crates/rdg/resources/zed.entitlements \
-            --sign "$MACOS_SIGNING_IDENTITY" "$app_dir/Contents/MacOS/Rdg"
-          codesign --force --timestamp --options runtime \
-            --keychain "$keychain_path" \
-            --entitlements crates/rdg/resources/zed.entitlements \
-            --sign "$MACOS_SIGNING_IDENTITY" "$app_dir"
-          codesign --verify --deep --strict --verbose=2 "$app_dir"
-
-          dmg_dir="$RUNNER_TEMP/Rdg-dmg"
-          dmg_path="rdg-macos-${{ matrix.arch }}.dmg"
-          mkdir -p "$dmg_dir"
-          cp -R "$app_dir" "$dmg_dir/"
-          ln -s /Applications "$dmg_dir/Applications"
-          hdiutil create -volname Rdg -srcfolder "$dmg_dir" -ov -format UDZO "$dmg_path"
-
-          printf '%s' "$APPLE_NOTARIZATION_KEY" > "$notary_key_path"
-          chmod 600 "$notary_key_path"
-          xcrun notarytool submit "$dmg_path" --wait \
-            --key "$notary_key_path" \
-            --key-id "$APPLE_NOTARIZATION_KEY_ID" \
-            --issuer "$APPLE_NOTARIZATION_ISSUER_ID"
-          xcrun stapler staple "$dmg_path"
-          xcrun stapler validate "$dmg_path"
-          spctl --assess --type open --context context:primary-signature "$app_dir"
-
-          security delete-keychain "$keychain_path"
-
-      - name: Upload macOS package to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" "rdg-macos-${{ matrix.arch }}.dmg" --repo "$GITHUB_REPOSITORY" --clobber
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rdg-macos-${{ matrix.arch }}
+          path: rdg-macos-${{ matrix.arch }}-app.tar.gz
+          if-no-files-found: error
+          retention-days: 30
 
   build_windows:
     name: Build Windows x86_64
-    needs:
-      - validate_tag
-      - create_release
+    needs: validate_tag
     runs-on: windows-2022
-    permissions:
-      contents: write
+    timeout-minutes: 120
     env:
       RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
@@ -308,7 +245,9 @@ jobs:
           Copy-Item "LICENSE-APACHE" "$packageDir\LICENSE-APACHE"
           Copy-Item "LICENSE-GPL" "$packageDir\LICENSE-GPL"
 
-          # These files are produced by rdg's build script and improve terminal support.
+          $iconName = if ($env:RELEASE_CHANNEL -eq "stable") { "app-icon.ico" } else { "app-icon-preview.ico" }
+          Copy-Item "crates\rdg\resources\windows\$iconName" "$packageDir\Rdg.ico"
+
           foreach ($file in @("conpty.dll", "OpenConsole.exe")) {
               $source = "target\$file"
               if (Test-Path $source) {
@@ -318,7 +257,139 @@ jobs:
 
           Compress-Archive -Path "$packageDir\*" -DestinationPath "rdg-windows-x86_64.zip" -Force
 
-      - name: Upload Windows package to release
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rdg-windows-x86_64
+          path: rdg-windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  publish_release:
+    name: Publish ${{ needs.validate_tag.outputs.channel }} release
+    needs:
+      - validate_tag
+      - build_linux
+      - build_macos
+      - build_windows
+    runs-on: macos-14
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    environment:
+      name: ${{ needs.validate_tag.outputs.channel == 'stable' && 'production' || 'release-candidate' }}
+    env:
+      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
+      RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      APPLE_NOTARIZATION_KEY: ${{ secrets.APPLE_NOTARIZATION_KEY }}
+      APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
+      APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          path: artifacts
+
+      - name: Sign, notarize, and publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" rdg-windows-x86_64.zip --repo "$GITHUB_REPOSITORY" --clobber
+        run: |
+          set -euo pipefail
+
+          required_secrets=(
+            MACOS_CERTIFICATE
+            MACOS_CERTIFICATE_PASSWORD
+            MACOS_SIGNING_IDENTITY
+            APPLE_NOTARIZATION_KEY
+            APPLE_NOTARIZATION_KEY_ID
+            APPLE_NOTARIZATION_ISSUER_ID
+          )
+          for secret_name in "${required_secrets[@]}"; do
+            if [[ -z "${!secret_name:-}" ]]; then
+              echo "Missing required environment secret: $secret_name" >&2
+              exit 1
+            fi
+          done
+
+          mkdir -p release-assets macos-apps
+          cp artifacts/rdg-linux-x86_64/rdg-linux-x86_64.tar.gz release-assets/
+          cp artifacts/rdg-windows-x86_64/rdg-windows-x86_64.zip release-assets/
+
+          keychain_path="$RUNNER_TEMP/rdg-signing.keychain-db"
+          certificate_path="$RUNNER_TEMP/rdg-certificate.p12"
+          notary_key_path="$RUNNER_TEMP/rdg-notary-key.p8"
+          security create-keychain -p "$MACOS_CERTIFICATE_PASSWORD" "$keychain_path"
+          security default-keychain -s "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$MACOS_CERTIFICATE_PASSWORD" "$keychain_path"
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security import "$certificate_path" -k "$keychain_path" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_CERTIFICATE_PASSWORD" "$keychain_path"
+
+          dmg_paths=()
+          for arch in x86_64 aarch64; do
+            app_root="macos-apps/$arch"
+            mkdir -p "$app_root"
+            tar -xzf "artifacts/rdg-macos-$arch/rdg-macos-$arch-app.tar.gz" -C "$app_root"
+            app_dir="$app_root/Rdg.app"
+
+            codesign --force --timestamp --options runtime \
+              --keychain "$keychain_path" \
+              --entitlements crates/rdg/resources/zed.entitlements \
+              --sign "$MACOS_SIGNING_IDENTITY" "$app_dir/Contents/MacOS/Rdg"
+            codesign --force --timestamp --options runtime \
+              --keychain "$keychain_path" \
+              --entitlements crates/rdg/resources/zed.entitlements \
+              --sign "$MACOS_SIGNING_IDENTITY" "$app_dir"
+            codesign --verify --deep --strict --verbose=2 "$app_dir"
+
+            dmg_dir="$RUNNER_TEMP/Rdg-dmg-$arch"
+            dmg_path="release-assets/rdg-macos-$arch.dmg"
+            mkdir -p "$dmg_dir"
+            cp -R "$app_dir" "$dmg_dir/"
+            ln -s /Applications "$dmg_dir/Applications"
+            hdiutil create -volname Rdg -srcfolder "$dmg_dir" -ov -format UDZO "$dmg_path"
+            dmg_paths+=("$dmg_path")
+          done
+
+          printf '%s' "$APPLE_NOTARIZATION_KEY" > "$notary_key_path"
+          chmod 600 "$notary_key_path"
+          for dmg_path in "${dmg_paths[@]}"; do
+            xcrun notarytool submit "$dmg_path" --wait \
+              --key "$notary_key_path" \
+              --key-id "$APPLE_NOTARIZATION_KEY_ID" \
+              --issuer "$APPLE_NOTARIZATION_ISSUER_ID"
+            xcrun stapler staple "$dmg_path"
+            xcrun stapler validate "$dmg_path"
+          done
+
+          (
+            cd release-assets
+            shasum -a 256 \
+              rdg-linux-x86_64.tar.gz \
+              rdg-windows-x86_64.zip \
+              rdg-macos-x86_64.dmg \
+              rdg-macos-aarch64.dmg
+          ) > release-assets/SHA256SUMS
+          assets=(release-assets/*)
+          tag="$GITHUB_REF_NAME"
+          repo="$GITHUB_REPOSITORY"
+
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            gh release upload "$tag" --repo "$repo" "${assets[@]}" --clobber
+          else
+            release_options=(--title "Rdg ${tag#v}" --generate-notes --verify-tag)
+            if [[ "$RELEASE_CHANNEL" == "preview" ]]; then
+              release_options+=(--prerelease)
+            fi
+            gh release create "$tag" --repo "$repo" "${assets[@]}" "${release_options[@]}"
+          fi
+
+          security delete-keychain "$keychain_path"

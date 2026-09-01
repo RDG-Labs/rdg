@@ -1,0 +1,140 @@
+name: ci
+
+on:
+  pull_request:
+    branches:
+      - main
+      - "release/**"
+  push:
+    branches:
+      - main
+      - "release/**"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: Check changed Rust formatting
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          fetch-depth: 0
+
+      - name: Check changed Rust files
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_sha="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
+            base_sha="$(git rev-parse HEAD^)"
+          fi
+
+          mapfile -t rust_files < <(git diff --name-only "$base_sha" "$GITHUB_SHA" -- '*.rs')
+          if ((${#rust_files[@]} > 0)); then
+            rustfmt --edition 2024 --check "${rust_files[@]}"
+          fi
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        with:
+          cache-target: true
+
+      - name: Install Linux dependencies
+        run: ./script/linux
+
+      - name: Install WASI SDK
+        run: ./script/download-wasi-sdk
+
+      - name: Run Clippy
+        run: ./script/clippy
+
+  tests:
+    name: Workspace tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        with:
+          cache-target: true
+
+      - name: Install Linux dependencies
+        run: ./script/linux
+
+      - name: Install WASI SDK
+        run: ./script/download-wasi-sdk
+
+      - name: Run tests
+        uses: ./.github/actions/run_tests
+
+  build:
+    name: Build ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - name: macOS x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - name: macOS Apple Silicon
+            runner: macos-14
+            target: aarch64-apple-darwin
+          - name: Windows x86_64
+            runner: windows-2022
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      RELEASE_CHANNEL: dev
+      ZED_RELEASE_CHANNEL: dev
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        with:
+          cache-target: true
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: ./script/linux
+
+      - name: Install WASI SDK
+        if: runner.os == 'Linux'
+        run: ./script/download-wasi-sdk
+
+      - name: Build Rdg
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.target }}" == "aarch64-apple-darwin" ]]; then
+            export RUSTFLAGS="-C symbol-mangling-version=v0 --cfg tokio_unstable -C link-arg=-Wl,-ld_classic"
+          fi
+          cargo build --release --package rdg --target "${{ matrix.target }}"
