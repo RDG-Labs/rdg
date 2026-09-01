@@ -1371,7 +1371,7 @@ impl Render for TerminalView {
                 div()
                     .id("terminal-view-container")
                     .size_full()
-                    .bg(cx.theme().colors().editor_background)
+                    .bg(cx.theme().colors().terminal_background)
                     .child(TerminalElement::new(
                         terminal_handle,
                         terminal_view_handle,
@@ -1389,7 +1389,7 @@ impl Render for TerminalView {
                                 .show_along(ScrollAxes::Vertical)
                                 .with_stable_track_along(
                                     ScrollAxes::Vertical,
-                                    colors.editor_background,
+                                    colors.terminal_background,
                                 )
                                 .tracked_scroll_handle(&self.scroll_handle),
                             window,
