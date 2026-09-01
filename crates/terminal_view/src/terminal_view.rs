@@ -11,7 +11,7 @@ use editor::{
 use gpui::{
     Action, AnyElement, App, ClipboardEntry, DismissEvent, Entity, EventEmitter, ExternalPaths,
     FocusHandle, Focusable, Font, KeyContext, KeyDownEvent, Keystroke, MouseButton, MouseDownEvent,
-    Pixels, Point as GpuiPoint, Render, ScrollWheelEvent, Styled, Subscription, Task, TaskExt,
+    Pixels, Point as GpuiPoint, Render, ScrollWheelEvent, Styled, Subscription, Task,
     WeakEntity, actions, anchored, deferred, div,
 };
 use menu;
@@ -49,8 +49,8 @@ use ui::{
 };
 use util::ResultExt;
 use workspace::{
-    CloseActiveItem, DraggedSelection, DraggedTab, NewCenterTerminal, NewCenterTerminalSplit,
-    NewTerminal, Pane, ToolbarItemLocation, Workspace, WorkspaceId, delete_unloaded_items,
+    CloseActiveItem, DraggedSelection, DraggedTab, NewTerminal, Pane, ToolbarItemLocation,
+    Workspace, WorkspaceId, delete_unloaded_items,
     item::{
         HighlightedText, Item, ItemEvent, SerializableItem, TabContentParams, TabTooltipContent,
     },
@@ -108,12 +108,6 @@ pub fn init(cx: &mut App) {
     terminal_panel::init(cx);
 
     register_serializable_item::<TerminalView>(cx);
-
-    cx.observe_new(|workspace: &mut Workspace, _window, _cx| {
-        workspace.register_action(TerminalView::deploy);
-        workspace.register_action(TerminalView::deploy_split);
-    })
-    .detach();
 }
 
 pub struct BlockProperties {
@@ -212,50 +206,6 @@ impl Focusable for TerminalView {
 }
 
 impl TerminalView {
-    ///Create a new Terminal in the current working directory or the user's home directory
-    pub fn deploy(
-        workspace: &mut Workspace,
-        action: &NewCenterTerminal,
-        window: &mut Window,
-        cx: &mut Context<Workspace>,
-    ) {
-        let local = action.local;
-        let working_directory = default_working_directory(workspace, cx);
-        TerminalPanel::add_center_terminal(workspace, window, cx, move |project, cx| {
-            if local {
-                project.create_local_terminal(cx)
-            } else {
-                project.create_terminal_shell(working_directory, cx)
-            }
-        })
-        .detach_and_log_err(cx);
-    }
-
-    fn deploy_split(
-        workspace: &mut Workspace,
-        action: &NewCenterTerminalSplit,
-        window: &mut Window,
-        cx: &mut Context<Workspace>,
-    ) {
-        let local = action.local;
-        let direction = action.direction;
-        let working_directory = default_working_directory(workspace, cx);
-        TerminalPanel::add_center_terminal_in_direction(
-            workspace,
-            Some(direction),
-            window,
-            cx,
-            move |project, cx| {
-                if local {
-                    project.create_local_terminal(cx)
-                } else {
-                    project.create_terminal_shell(working_directory, cx)
-                }
-            },
-        )
-        .detach_and_log_err(cx);
-    }
-
     pub fn new(
         terminal: Entity<Terminal>,
         workspace: WeakEntity<Workspace>,
@@ -561,10 +511,6 @@ impl TerminalView {
             menu.context(self.focus_handle.clone())
                 .when(self.shows_workspace_actions(), |menu| {
                     menu.action("New Terminal", Box::new(NewTerminal::default()))
-                        .action(
-                            "New Center Terminal",
-                            Box::new(NewCenterTerminal::default()),
-                        )
                         .separator()
                 })
                 .action("Copy", Box::new(Copy))

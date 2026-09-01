@@ -9,20 +9,17 @@ Zed includes a built-in terminal emulator that supports multiple terminal instan
 
 ## Opening Terminals
 
-| Action                  | macOS           | Linux/Windows   |
-| ----------------------- | --------------- | --------------- |
-| Toggle terminal panel   | `` Ctrl+` ``    | `` Ctrl+` ``    |
-| Open new terminal       | `Ctrl+~`        | `Ctrl+~`        |
-| Open terminal in center | Command palette | Command palette |
+| Action                | macOS        | Linux/Windows |
+| --------------------- | ------------ | ------------- |
+| Open terminal group   | `` Ctrl+` `` | `` Ctrl+` ``  |
+| Open new terminal     | `Ctrl+~`     | `Ctrl+~`      |
 
-You can also open a terminal from the command palette with {#action terminal_panel::Toggle} or {#action workspace::NewTerminal}.
+Use {#action terminal_group::New} to open a terminal group as a regular workspace tab. Use {#action workspace::NewTerminal} to open a standard terminal in the active pane.
 
-### Terminal Panel vs Center Terminal
+### Terminal Groups
 
-Terminals can open in two locations:
-
-- **Terminal Panel** — Docked at the bottom (default), left, or right of the workspace. Toggle with `` Ctrl+` ``.
-- **Center Pane** — Opens as a regular tab alongside your files. Use {#action workspace::NewCenterTerminal} from the command palette.
+A terminal group is a regular workspace tab containing one or more tiled terminals. Create additional groups with `` Ctrl+` `` and split or move between terminals using the terminal-group actions.
+te.
 
 ## Working with Multiple Terminals
 
@@ -313,18 +310,6 @@ Options: `"bottom"` (default), `"left"`, `"right"`
   "terminal": {
     "default_width": 640,
     "default_height": 320
-  }
-}
-```
-
-### Terminal Button
-
-Hide the terminal button in the status bar:
-
-```json [settings]
-{
-  "terminal": {
-    "button": false
   }
 }
 ```

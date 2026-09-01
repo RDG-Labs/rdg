@@ -156,7 +156,6 @@
   {
     "context": "Workspace || Editor",
     "bindings": {
-      "alt-f12": "terminal_panel::Toggle",
       "cmd-shift-k": "git::Push",
     },
   },

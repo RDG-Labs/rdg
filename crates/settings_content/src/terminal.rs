@@ -132,10 +132,6 @@ pub struct TerminalSettingsContent {
     ///
     /// Default: true
     pub open_links_in_mouse_mode: Option<bool>,
-    /// Whether to show the terminal button in the status bar.
-    ///
-    /// Default: true
-    pub button: Option<bool>,
     pub dock: Option<TerminalDockPosition>,
     /// Whether the terminal panel should open on startup.
     ///
@@ -200,7 +196,7 @@ crate::fallible_options::flattened_deserialize!(TerminalSettingsContent {
     options: {
         font_size, font_family, font_fallbacks, line_height, font_features, font_weight,
         cursor_shape, blinking, alternate_scroll, option_as_meta, copy_on_select,
-        keep_selection_on_copy, open_links_in_mouse_mode, button, dock, starts_open, flexible,
+        keep_selection_on_copy, open_links_in_mouse_mode, dock, starts_open, flexible,
         default_width, default_height, max_scroll_history_lines, scroll_multiplier, toolbar,
         scrollbar, minimum_contrast, show_count_badge, bell,
     },

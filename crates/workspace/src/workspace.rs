@@ -487,38 +487,6 @@ pub struct ToggleFileFinder {
     pub include_ignored: Option<bool>,
 }
 
-/// Opens a new terminal in the center.
-#[derive(Default, PartialEq, Eq, Clone, Deserialize, JsonSchema, Action)]
-#[action(namespace = workspace)]
-#[serde(deny_unknown_fields)]
-pub struct NewCenterTerminal {
-    /// If true, creates a local terminal even in remote projects.
-    #[serde(default)]
-    pub local: bool,
-}
-
-/// Opens a new terminal in a center split.
-#[derive(PartialEq, Clone, Deserialize, JsonSchema, Action)]
-#[action(namespace = workspace)]
-#[serde(deny_unknown_fields)]
-pub struct NewCenterTerminalSplit {
-    /// The direction in which to create the terminal pane.
-    #[serde(default = "default_right")]
-    pub direction: SplitDirection,
-    /// If true, creates a local terminal even in remote projects.
-    #[serde(default)]
-    pub local: bool,
-}
-
-impl Default for NewCenterTerminalSplit {
-    fn default() -> Self {
-        Self {
-            direction: SplitDirection::Right,
-            local: false,
-        }
-    }
-}
-
 /// Opens a new terminal.
 #[derive(Default, PartialEq, Eq, Clone, Deserialize, JsonSchema, Action)]
 #[action(namespace = workspace)]

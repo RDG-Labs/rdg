@@ -1,5 +1,5 @@
 use crate::{
-    CloseWindow, NewCenterTerminal, NewCenterTerminalSplit, NewFile, NewTerminal, OpenInTerminal,
+    CloseWindow, NewFile, NewTerminal, OpenInTerminal,
     OpenOptions, OpenTerminal, OpenVisible, SplitDirection, ToggleFileFinder, ToggleProjectSymbols,
     ToggleZoom, Workspace, WorkspaceItemBuilder, ZoomIn, ZoomOut,
     focus_follows_mouse::FocusFollowsMouse as _,
@@ -4343,27 +4343,7 @@ fn default_render_tab_bar_buttons(
                             .action("Search Project", DeploySearch::default().boxed_clone())
                             .action("Search Symbols", ToggleProjectSymbols.boxed_clone())
                             .separator()
-                            .action("New Terminal", NewTerminal::default().boxed_clone())
-                            .action(
-                                "New Center Terminal",
-                                NewCenterTerminal::default().boxed_clone(),
-                            )
-                            .action(
-                                "New Terminal to Right",
-                                NewCenterTerminalSplit {
-                                    direction: SplitDirection::Right,
-                                    local: false,
-                                }
-                                .boxed_clone(),
-                            )
-                            .action(
-                                "New Terminal Below",
-                                NewCenterTerminalSplit {
-                                    direction: SplitDirection::Down,
-                                    local: false,
-                                }
-                                .boxed_clone(),
-                            );
+                            .action("New Terminal", NewTerminal::default().boxed_clone());
                         // The terminal grid lives in a downstream crate, so its
                         // action is resolved by name rather than by type.
                         match cx.build_action("terminal_group::New", None) {
