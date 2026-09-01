@@ -2,7 +2,7 @@
 description = "A code editor built around a tiled terminal workspace."
 edition.workspace = true
 name = "rdg"
-version = "1.19.0"
+version = "0.1.0"
 publish.workspace = true
 license = "GPL-3.0-or-later"
 authors = ["Rdg Labs"]

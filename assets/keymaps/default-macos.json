@@ -1295,26 +1295,6 @@
     },
   },
   {
-    "context": "RatePredictionsModal",
-    "use_key_equivalents": true,
-    "bindings": {
-      "cmd-shift-enter": "zeta::ThumbsUpActivePrediction",
-      "cmd-shift-backspace": "zeta::ThumbsDownActivePrediction",
-      "shift-down": "zeta::NextEdit",
-      "shift-up": "zeta::PreviousEdit",
-      "right": "zeta::PreviewPrediction",
-    },
-  },
-  {
-    "context": "RatePredictionsModal > Editor",
-    "use_key_equivalents": true,
-    "bindings": {
-      "escape": "zeta::FocusPredictions",
-      "cmd-shift-enter": "zeta::ThumbsUpActivePrediction",
-      "cmd-shift-backspace": "zeta::ThumbsDownActivePrediction",
-    },
-  },
-  {
     "context": "ZedPredictModal",
     "use_key_equivalents": true,
     "bindings": {
