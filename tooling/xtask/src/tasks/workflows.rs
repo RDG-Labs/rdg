@@ -218,23 +218,40 @@ pub fn run_workflows(args: GenerateWorkflowArgs) -> Result<()> {
     WorkflowType::remove_generated_workflows()?;
 
     let workflows = [
-        WorkflowFile::zed(autofix_pr::autofix_pr),
-        WorkflowFile::zed(bump_patch_version::bump_patch_version),
-        WorkflowFile::zed(bump_zed_version::bump_zed_version),
-        WorkflowFile::zed(cherry_pick::cherry_pick),
-        WorkflowFile::zed(compliance_check::compliance_check),
-        WorkflowFile::zed(danger::danger),
-        WorkflowFile::zed(deploy_collab::deploy_collab),
-        WorkflowFile::zed(deploy_docs::deploy_docs),
-        WorkflowFile::zed(deploy_docs::deploy_nightly_docs),
-        WorkflowFile::zed(extension_bump::extension_bump),
-        WorkflowFile::zed(extension_auto_bump::extension_auto_bump),
-        WorkflowFile::zed(extension_tests::extension_tests),
-        WorkflowFile::zed(extension_workflow_rollout::extension_workflow_rollout),
-        WorkflowFile::zed(nix_build::nix_build),
-        WorkflowFile::zed(publish_extension_cli::publish_extension_cli),
-        WorkflowFile::zed(run_bundling::run_bundling),
-        WorkflowFile::zed(run_tests::run_tests),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(autofix_pr::autofix_pr),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(bump_patch_version::bump_patch_version),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(bump_zed_version::bump_zed_version),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(cherry_pick::cherry_pick),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(compliance_check::compliance_check),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(danger::danger),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(deploy_collab::deploy_collab),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(deploy_docs::deploy_docs),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(deploy_docs::deploy_nightly_docs),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(extension_bump::extension_bump),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(extension_auto_bump::extension_auto_bump),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(extension_tests::extension_tests),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(extension_workflow_rollout::extension_workflow_rollout),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(nix_build::nix_build),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(publish_extension_cli::publish_extension_cli),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(run_bundling::run_bundling),
+        // Disabled in the RDG fork; these workflows require unavailable Zed infrastructure.
+        // WorkflowFile::zed(run_tests::run_tests),
         /* workflows used for CI/CD in extension repositories */
         WorkflowFile::extension(extensions::run_tests::run_tests),
         WorkflowFile::extension_shared(extensions::bump_version::bump_version),
