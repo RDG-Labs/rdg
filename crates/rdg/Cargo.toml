@@ -49,7 +49,6 @@ auto_update.workspace = true
 auto_update_ui.workspace = true
 breadcrumbs.workspace = true
 call_hierarchy.workspace = true
-channel.workspace = true
 chrono.workspace = true
 clap.workspace = true
 cli.workspace = true

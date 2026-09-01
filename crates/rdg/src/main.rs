@@ -674,7 +674,6 @@ fn main() {
         outline_panel::init(cx);
         tasks_ui::init(cx);
         snippets_ui::init(cx);
-        channel::init(&app_state.client.clone(), app_state.user_store.clone(), cx);
         search::init(cx);
         lsp_locations::init(cx);
         cx.set_global(workspace::PaneSearchBarCallbacks {
@@ -697,7 +696,6 @@ fn main() {
         theme_selector::init(cx);
         settings_profile_selector::init(cx);
         language_tools::init(cx);
-        notifications::init(app_state.client.clone(), app_state.user_store.clone(), cx);
         git_ui::init(cx);
         markdown_preview::init(cx);
         tabular_data_preview::init(cx);
