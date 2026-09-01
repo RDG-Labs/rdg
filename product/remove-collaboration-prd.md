@@ -130,12 +130,25 @@ depended on by nothing.
 Delete `crates/call` (3,407), `crates/livekit_client` (4,248) and `crates/livekit_api` (497),
 now that Phase 2 has orphaned them. Remove the `libwebrtc`/`livekit` workspace dependencies.
 
+**Correction (2026-09-01): that alone is not sufficient.** `crates/audio` depends on
+`libwebrtc` **directly**, via a target-specific dependency block, independent of livekit — it
+used WebRTC's `AudioProcessingModule` for echo cancellation. Since `audio` is depended on by
+`rdg`, `settings_ui` and `agent_ui`, deleting only the three crates would have left the blob
+download in place while appearing to fix it.
+
+`EchoCanceller` is removed too. Its `process_stream` (near-end microphone) method was called
+only by `livekit_client`'s capture path; with that gone the canceller receives a far-end
+reference and never has a near-end signal to cancel against, so it cannot affect output. This
+is a structural argument, not a preference.
+
 This is the phase that **kills the mid-build network fetch**.
 
 Stale livekit paths appear as fixture strings in `file_finder_tests.rs` (lines 5066–5097).
 They are test data, not references — they compile either way. Refresh them or leave them.
 
-**Exit:** no build script downloads anything; a clean checkout builds offline.
+**Exit:** no build script downloads anything on macOS or Linux; a clean checkout builds
+offline there. One unrelated Windows-only ConPTY fetch remains in `crates/rdg/build.rs`,
+inside `if cfg!(windows)`.
 
 ---
 
@@ -169,3 +182,4 @@ They are test data, not references — they compile either way. Refresh them or 
 | Q1 | Does `client::SignIn` still complete against upstream servers? Determines whether §1.1 can be strengthened from "unused" to "non-functional" | Nothing — the case does not depend on it |
 | ~~Q2~~ | ~~Keep call-participant commit attribution in `git_ui`?~~ **Resolved: no.** `call` is removed outright, so the attribution goes with it | — |
 | Q3 | `client` and `user_store` survive this removal. Are they still needed once collaboration is gone, or is that a fourth phase? | Post-Phase 3 |
+| Q4 | `workspace`'s `AnyActiveCall` trait (~20 sites) has no implementor after Phase 3. `try_global` returns `None` everywhere and the two `global()` calls are unreachable, so it is dead weight rather than a crash risk. Remove it with Q3 as Phase 4 | Post-Phase 3 |

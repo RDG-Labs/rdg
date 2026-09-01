@@ -48,7 +48,6 @@ audio.workspace = true
 auto_update.workspace = true
 auto_update_ui.workspace = true
 breadcrumbs.workspace = true
-call.workspace = true
 call_hierarchy.workspace = true
 channel.workspace = true
 chrono.workspace = true
@@ -207,7 +206,6 @@ pkg-config = "0.3.22"
 
 [dev-dependencies]
 activity_indicator = { workspace = true, features = ["test-support"] }
-call = { workspace = true, features = ["test-support"] }
 editor = { workspace = true, features = ["test-support"] }
 fs = { workspace = true, features = ["test-support"] }
 gpui = { workspace = true, features = ["profiler", "test-support"] }
