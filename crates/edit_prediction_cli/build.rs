@@ -1,6 +1,6 @@
 fn main() {
     let cargo_toml =
-        std::fs::read_to_string("../zed/Cargo.toml").expect("Failed to read crates/rdg/Cargo.toml");
+        std::fs::read_to_string("../rdg/Cargo.toml").expect("Failed to read crates/rdg/Cargo.toml");
     let version = cargo_toml
         .lines()
         .find(|line| line.starts_with("version = "))
