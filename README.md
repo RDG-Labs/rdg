@@ -33,6 +33,7 @@ There are no prebuilt binaries yet; build from source.
 - [Building Rdg for macOS](./docs/src/development/macos.md)
 - [Building Rdg for Linux](./docs/src/development/linux.md)
 - [Building Rdg for Windows](./docs/src/development/windows.md)
+- [Keyboard shortcuts and keymaps](./SHORTCUT.md)
 
 Use `./script/clippy` rather than `cargo clippy` — it applies the workspace lint configuration.
 
