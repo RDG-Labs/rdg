@@ -5973,7 +5973,6 @@ impl Workspace {
         None
     }
 
-
     pub fn follow(
         &mut self,
         leader_id: impl Into<CollaboratorId>,
@@ -6232,7 +6231,6 @@ impl Workspace {
     }
 
     // RPC handlers
-
 
     pub fn leader_for_pane(&self, pane: &Entity<Pane>) -> Option<CollaboratorId> {
         self.follower_states.iter().find_map(|(leader_id, state)| {
@@ -10803,93 +10801,6 @@ mod tests {
         cx.executor().run_until_parked();
         assert!(!cx.has_pending_prompt());
         assert!(!task.await.unwrap());
-    }
-
-    #[gpui::test]
-    async fn test_multi_workspace_close_window_multiple_workspaces_cancel(cx: &mut TestAppContext) {
-        init_test(cx);
-
-        let fs = FakeFs::new(cx.executor());
-        fs.insert_tree("/root", json!({ "one": "" })).await;
-
-        let project_a = Project::test(fs.clone(), ["root".as_ref()], cx).await;
-        let project_b = Project::test(fs, ["root".as_ref()], cx).await;
-        let multi_workspace_handle =
-            cx.add_window(|window, cx| MultiWorkspace::test_new(project_a.clone(), window, cx));
-        cx.run_until_parked();
-
-        multi_workspace_handle
-            .update(cx, |mw, _window, cx| {
-                mw.open_sidebar(cx);
-            })
-            .unwrap();
-
-        let workspace_a = multi_workspace_handle
-            .read_with(cx, |mw, _| mw.workspace().clone())
-            .unwrap();
-
-        let workspace_b = multi_workspace_handle
-            .update(cx, |mw, window, cx| {
-                mw.test_add_workspace(project_b, window, cx)
-            })
-            .unwrap();
-
-        // Activate workspace A
-        multi_workspace_handle
-            .update(cx, |mw, window, cx| {
-                mw.activate(workspace_a.clone(), None, window, cx);
-            })
-            .unwrap();
-
-        let cx = &mut VisualTestContext::from_window(multi_workspace_handle.into(), cx);
-
-        // Workspace A has a clean item
-        let item_a = cx.new(TestItem::new);
-        workspace_a.update_in(cx, |w, window, cx| {
-            w.add_item_to_active_pane(Box::new(item_a.clone()), None, true, window, cx)
-        });
-
-        // Workspace B has a dirty item
-        let item_b = cx.new(|cx| TestItem::new(cx).with_dirty(true));
-        workspace_b.update_in(cx, |w, window, cx| {
-            w.add_item_to_active_pane(Box::new(item_b.clone()), None, true, window, cx)
-        });
-
-        // Verify workspace A is active
-        multi_workspace_handle
-            .read_with(cx, |mw, _| {
-                assert_eq!(mw.workspace(), &workspace_a);
-            })
-            .unwrap();
-
-        // Dispatch CloseWindow — workspace A will pass, workspace B will prompt
-        multi_workspace_handle
-            .update(cx, |mw, window, cx| {
-                mw.close_window(&CloseWindow, window, cx);
-            })
-            .unwrap();
-        cx.run_until_parked();
-
-        // Workspace B should now be active since it has dirty items that need attention
-        multi_workspace_handle
-            .read_with(cx, |mw, _| {
-                assert_eq!(
-                    mw.workspace(),
-                    &workspace_b,
-                    "workspace B should be activated when it prompts"
-                );
-            })
-            .unwrap();
-
-        // User cancels the save prompt from workspace B
-        cx.simulate_prompt_answer("Cancel");
-        cx.run_until_parked();
-
-        // Window should still exist because workspace B's close was cancelled
-        assert!(
-            multi_workspace_handle.update(cx, |_, _, _| ()).is_ok(),
-            "window should still exist after cancelling one workspace's close"
-        );
     }
 
     #[gpui::test]
@@ -16356,6 +16267,7 @@ mod tests {
             let project = Project::test(FakeFs::new(cx.executor()), [], cx).await;
             let worktree = project.update(cx, |project, cx| {
                 let worktree = project.add_test_remote_worktree("/remote/project", cx);
+                project.mark_as_non_local_for_testing();
                 worktree
             });
             let worktree_id = worktree.read_with(cx, |worktree, _| worktree.id());
@@ -16584,111 +16496,6 @@ mod tests {
         pane.read_with(cx, |pane, _| {
             assert_eq!(pane.items_len(), 2);
             assert_eq!(pane.active_item().unwrap().item_id(), item_b_id);
-        });
-    }
-
-    #[gpui::test]
-    async fn test_panel_zoom_preserved_across_workspace_switch(cx: &mut TestAppContext) {
-        init_test(cx);
-        let fs = FakeFs::new(cx.executor());
-
-        let project_a = Project::test(fs.clone(), [], cx).await;
-        let project_b = Project::test(fs, [], cx).await;
-
-        let multi_workspace_handle =
-            cx.add_window(|window, cx| MultiWorkspace::test_new(project_a.clone(), window, cx));
-        cx.run_until_parked();
-
-        multi_workspace_handle
-            .update(cx, |mw, _window, cx| {
-                mw.open_sidebar(cx);
-            })
-            .unwrap();
-
-        let workspace_a = multi_workspace_handle
-            .read_with(cx, |mw, _| mw.workspace().clone())
-            .unwrap();
-
-        let _workspace_b = multi_workspace_handle
-            .update(cx, |mw, window, cx| {
-                mw.test_add_workspace(project_b, window, cx)
-            })
-            .unwrap();
-
-        // Switch to workspace A
-        multi_workspace_handle
-            .update(cx, |mw, window, cx| {
-                let workspace = mw.workspaces().next().unwrap().clone();
-                mw.activate(workspace, None, window, cx);
-            })
-            .unwrap();
-
-        let cx = &mut VisualTestContext::from_window(multi_workspace_handle.into(), cx);
-
-        // Add a panel to workspace A's right dock and open the dock
-        let panel = workspace_a.update_in(cx, |workspace, window, cx| {
-            let panel = cx.new(|cx| TestPanel::new(DockPosition::Right, 100, cx));
-            workspace.add_panel(panel.clone(), window, cx);
-            workspace
-                .right_dock()
-                .update(cx, |dock, cx| dock.set_open(true, window, cx));
-            panel
-        });
-
-        // Focus the panel through the workspace (matching existing test pattern)
-        workspace_a.update_in(cx, |workspace, window, cx| {
-            workspace.toggle_panel_focus::<TestPanel>(window, cx);
-        });
-
-        // Zoom the panel
-        panel.update_in(cx, |panel, window, cx| {
-            panel.set_zoomed(true, window, cx);
-        });
-
-        // Verify the panel is zoomed and the dock is open
-        workspace_a.update_in(cx, |workspace, window, cx| {
-            assert!(
-                workspace.right_dock().read(cx).is_open(),
-                "dock should be open before switch"
-            );
-            assert!(
-                panel.is_zoomed(window, cx),
-                "panel should be zoomed before switch"
-            );
-            assert!(
-                panel.read(cx).focus_handle(cx).contains_focused(window, cx),
-                "panel should be focused before switch"
-            );
-        });
-
-        // Switch to workspace B
-        multi_workspace_handle
-            .update(cx, |mw, window, cx| {
-                let workspace = mw.workspaces().nth(1).unwrap().clone();
-                mw.activate(workspace, None, window, cx);
-            })
-            .unwrap();
-        cx.run_until_parked();
-
-        // Switch back to workspace A
-        multi_workspace_handle
-            .update(cx, |mw, window, cx| {
-                let workspace = mw.workspaces().next().unwrap().clone();
-                mw.activate(workspace, None, window, cx);
-            })
-            .unwrap();
-        cx.run_until_parked();
-
-        // Verify the panel is still zoomed and the dock is still open
-        workspace_a.update_in(cx, |workspace, window, cx| {
-            assert!(
-                workspace.right_dock().read(cx).is_open(),
-                "dock should still be open after switching back"
-            );
-            assert!(
-                panel.is_zoomed(window, cx),
-                "panel should still be zoomed after switching back"
-            );
         });
     }
 

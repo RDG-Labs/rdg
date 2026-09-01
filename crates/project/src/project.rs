@@ -217,6 +217,10 @@ pub struct Project {
     user_store: Entity<UserStore>,
     fs: Arc<dyn Fs>,
     remote_client: Option<Entity<RemoteClient>>,
+    /// Forces `is_local` to report false without standing up a remote
+    /// connection, so tests can exercise the non-local branches.
+    #[cfg(any(test, feature = "test-support"))]
+    force_non_local_for_testing: bool,
     // todo lw explain the client_state x remote_client matrix, its super confusing
     git_store: Entity<GitStore>,
     worktree_store: Entity<WorktreeStore>,
@@ -1313,6 +1317,8 @@ impl Project {
                 settings_observer,
                 fs,
                 remote_client: None,
+                #[cfg(any(test, feature = "test-support"))]
+                force_non_local_for_testing: false,
                 bookmark_store,
                 breakpoint_store,
                 dap_store,
@@ -1554,6 +1560,8 @@ impl Project {
                 settings_observer,
                 fs,
                 remote_client: Some(remote.clone()),
+                #[cfg(any(test, feature = "test-support"))]
+                force_non_local_for_testing: false,
                 buffers_needing_diff: Default::default(),
                 git_diff_debouncer: DebouncedDelay::new(),
                 terminals: Terminals {
@@ -2390,7 +2398,16 @@ impl Project {
 
     #[inline]
     pub fn is_local(&self) -> bool {
+        #[cfg(any(test, feature = "test-support"))]
+        if self.force_non_local_for_testing {
+            return false;
+        }
         self.remote_client.is_none()
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn mark_as_non_local_for_testing(&mut self) {
+        self.force_non_local_for_testing = true;
     }
 
     /// Whether this project is a remote server (not counting collab).
