@@ -966,18 +966,6 @@ impl MultiWorkspace {
             .collect()
     }
 
-    #[cfg(test)]
-    pub(super) fn nearest_retained_workspace(
-        &self,
-        group_index: usize,
-        excluded_workspaces: &[Entity<Workspace>],
-        cx: &App,
-    ) -> Option<Entity<Workspace>> {
-        self.neighbor_group_keys(Some(group_index))
-            .into_iter()
-            .find_map(|key| self.live_member_for_group(&key, excluded_workspaces, cx))
-    }
-
     /// Goes through sqlite: serialize -> close -> open new window
     /// This avoids issues with pending tasks having the wrong window
     pub fn open_project_group_in_new_window(
