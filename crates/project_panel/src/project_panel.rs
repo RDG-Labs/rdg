@@ -25,8 +25,8 @@ use gpui::{
     ModifiersChangedEvent, MouseButton, MouseDownEvent, MouseExitEvent, ParentElement,
     PathPromptOptions, Pixels, Point, PromptLevel, Render, ScrollStrategy, Stateful, Styled,
     Subscription, Task, UniformListScrollHandle, WeakEntity, Window, actions, anchored, deferred,
-    div, hsla, linear_color_stop, linear_gradient, point, px, size, transparent_white,
-    uniform_list,
+    div, hsla, linear_color_stop, linear_gradient, point, px, size, transparent_black,
+    transparent_white, uniform_list,
 };
 use language::DiagnosticSeverity;
 use markdown_preview::markdown_preview_view::MarkdownPreviewView;
@@ -629,7 +629,9 @@ fn get_item_color(is_sticky: bool, cx: &App) -> ItemColors {
     let colors = cx.theme().colors();
 
     ItemColors {
-        default: if is_sticky {
+        default: if ui::theme_is_transparent(cx) {
+            transparent_black()
+        } else if is_sticky {
             colors.panel_overlay_background
         } else {
             colors.panel_background

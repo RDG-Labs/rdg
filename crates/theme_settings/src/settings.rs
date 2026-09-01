@@ -5,7 +5,7 @@ use crate::{merge_accent_colors, merge_player_colors};
 use collections::HashMap;
 use gpui::{
     App, Context, Font, FontFallbacks, FontStyle, Global, Pixels, SharedString, Subscription,
-    Window, px,
+    Window, WindowBackgroundAppearance, px,
 };
 use refineable::Refineable;
 use schemars::JsonSchema;
@@ -517,7 +517,47 @@ impl ThemeSettings {
             arc_theme = Arc::new(theme);
         }
 
-        arc_theme
+        let mut theme = (*arc_theme).clone();
+        Self::apply_translucent_surface_opacity(&mut theme);
+        Arc::new(theme)
+    }
+
+    const TRANSLUCENT_SURFACE_OPACITY: f32 = 0.5;
+    const TRANSLUCENT_PANEL_OPACITY: f32 = 0.2;
+    const TRANSLUCENT_BORDER_OPACITY: f32 = 0.35;
+
+    fn apply_translucent_surface_opacity(theme: &mut Theme) {
+        if theme.styles.window_background_appearance == WindowBackgroundAppearance::Opaque {
+            return;
+        }
+
+        let colors = &mut theme.styles.colors;
+        for color in [
+            &mut colors.background,
+            &mut colors.surface_background,
+            &mut colors.editor_background,
+            &mut colors.terminal_background,
+            &mut colors.status_bar_background,
+            &mut colors.title_bar_background,
+            &mut colors.title_bar_inactive_background,
+            &mut colors.toolbar_background,
+            &mut colors.tab_bar_background,
+            &mut colors.tab_inactive_background,
+        ] {
+            color.a = color.a.min(Self::TRANSLUCENT_SURFACE_OPACITY);
+        }
+
+        for color in [
+            &mut colors.panel_background,
+            &mut colors.panel_overlay_background,
+            &mut colors.panel_overlay_hover,
+        ] {
+            color.a = color.a.min(Self::TRANSLUCENT_PANEL_OPACITY);
+        }
+
+        for color in [&mut colors.border, &mut colors.border_variant] {
+            color.a = color.a.min(Self::TRANSLUCENT_BORDER_OPACITY);
+        }
     }
 
     fn modify_theme(base_theme: &mut Theme, theme_overrides: &settings::ThemeStyleContent) {
