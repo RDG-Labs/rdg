@@ -3,7 +3,6 @@ use crate::restore_or_create_workspace;
 use anyhow::{Context as _, Result, anyhow};
 use cli::{CliRequest, CliResponse, CliResponseSink};
 use cli::{IpcHandshake, ipc};
-use client::{ZedLink, parse_zed_link};
 use db::kvp::KeyValueStore;
 use editor::Editor;
 use fs::Fs;
@@ -39,8 +38,6 @@ pub struct OpenRequest {
     pub diff_paths: Vec<[String; 2]>,
     pub diff_all: bool,
     pub dev_container: bool,
-    pub open_channel_notes: Vec<(u64, Option<String>)>,
-    pub join_channel: Option<u64>,
     pub remote_connection: Option<RemoteConnectionOptions>,
     pub open_behavior: Option<cli::OpenBehavior>,
 }
@@ -110,8 +107,6 @@ impl OpenRequest {
             && self.open_paths.is_empty()
             && self.diff_paths.is_empty()
             && self.remote_connection.is_none()
-            && self.join_channel.is_none()
-            && self.open_channel_notes.is_empty()
     }
 
     pub fn parse(request: RawOpenRequest, cx: &App) -> Result<Self> {
@@ -174,18 +169,6 @@ impl OpenRequest {
                 this.parse_git_commit_url(commit_path)?
             } else if url.starts_with("ssh://") {
                 this.parse_ssh_file_path(&url, cx)?
-            } else if let Some(zed_link) = parse_zed_link(&url, cx) {
-                match zed_link {
-                    ZedLink::Channel { channel_id } => {
-                        this.join_channel = Some(channel_id);
-                    }
-                    ZedLink::ChannelNotes {
-                        channel_id,
-                        heading,
-                    } => {
-                        this.open_channel_notes.push((channel_id, heading));
-                    }
-                }
             } else {
                 log::error!("unhandled url: {}", url);
             }
@@ -1429,13 +1412,13 @@ mod tests {
         assert!(options.add_dirs_to_sidebar);
     }
 
-                fn agent_url_with_prompt(prompt: &str) -> String {
+    fn agent_url_with_prompt(prompt: &str) -> String {
         let mut serializer = url::form_urlencoded::Serializer::new("zed://agent?".to_string());
         serializer.append_pair("prompt", prompt);
         serializer.finish()
     }
 
-            #[gpui::test]
+    #[gpui::test]
     fn test_parse_focus_app_url(cx: &mut TestAppContext) {
         let _app_state = init_test(cx);
 
@@ -1462,7 +1445,7 @@ mod tests {
         }
     }
 
-        #[gpui::test]
+    #[gpui::test]
     fn test_parse_git_commit_url(cx: &mut TestAppContext) {
         let _app_state = init_test(cx);
 
