@@ -32,7 +32,6 @@ anyhow.workspace = true
 auto_update.workspace = true
 fs.workspace = true
 platform_title_bar.workspace = true
-channel.workspace = true
 chrono.workspace = true
 client.workspace = true
 command_palette_hooks.workspace = true
