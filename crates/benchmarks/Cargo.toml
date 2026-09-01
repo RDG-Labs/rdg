@@ -16,8 +16,6 @@ workspace = true
 rand.workspace = true
 
 [dev-dependencies]
-action_log.workspace = true
-agent = { workspace = true, features = ["test-support"] }
 agent_settings.workspace = true
 assets.workspace = true
 criterion.workspace = true
@@ -53,10 +51,6 @@ harness = false
 
 [[bench]]
 name = "display_map"
-harness = false
-
-[[bench]]
-name = "edit_file_tool"
 harness = false
 
 [[bench]]
