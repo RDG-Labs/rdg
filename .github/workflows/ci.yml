@@ -67,57 +67,8 @@ jobs:
         uses: ./.github/actions/run_tests
         with:
           # The rdg binary's GPUI integration tests require an interactive app lifecycle;
-          # platform build jobs still compile the binary on every CI run.
+          # release builds validate the binary on each version tag.
           filter-expr: "not package(rdg)"
 
-  build:
-    name: Build ${{ matrix.name }}
-    needs:
-      - clippy
-      - tests
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux x86_64
-            runner: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-          - name: macOS x86_64
-            runner: macos-15-intel
-            target: x86_64-apple-darwin
-          - name: macOS Apple Silicon
-            runner: macos-14
-            target: aarch64-apple-darwin
-          - name: Windows x86_64
-            runner: windows-2022
-            target: x86_64-pc-windows-msvc
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
-    env:
-      RELEASE_CHANNEL: dev
-      ZED_RELEASE_CHANNEL: dev
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
 
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
-        with:
-          cache-target: true
-
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
-        run: ./script/linux
-
-      - name: Install WASI SDK
-        if: runner.os == 'Linux'
-        run: ./script/download-wasi-sdk
-
-      - name: Build Rdg
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${{ matrix.target }}" == "aarch64-apple-darwin" ]]; then
-            export RUSTFLAGS="-C symbol-mangling-version=v0 --cfg tokio_unstable -C link-arg=-Wl,-ld_classic"
-          fi
-          cargo build --release --package rdg --target "${{ matrix.target }}"
+  # Platform builds run in rdg_release.yml after the release tag is validated.

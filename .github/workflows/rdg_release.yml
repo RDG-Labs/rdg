@@ -72,7 +72,7 @@ jobs:
     name: Build Linux x86_64
     needs: validate_tag
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 180
     env:
       RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
@@ -131,7 +131,7 @@ jobs:
             runner: macos-14
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
@@ -218,7 +218,7 @@ jobs:
     name: Build Windows x86_64
     needs: validate_tag
     runs-on: windows-2022
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
@@ -273,7 +273,7 @@ jobs:
       - build_macos
       - build_windows
     runs-on: macos-14
-    timeout-minutes: 90
+    timeout-minutes: 180
     permissions:
       contents: write
     environment:
