@@ -2,7 +2,7 @@ use anyhow::Result;
 use editor::Editor;
 use gpui::{
     Action as _, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable,
-    Render, SharedString, Subscription, WeakEntity, Window,
+    IntoElement, Render, SharedString, Subscription, WeakEntity, Window,
 };
 use language::Buffer;
 use project::Project;
@@ -105,12 +105,10 @@ impl MarkdownPreviewGroup {
         group: &mut Self,
         pane: Entity<Pane>,
         event: &workspace::pane::Event,
-        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         if matches!(event, workspace::pane::Event::Focus) {
             group.active_pane = pane;
-            window.focus(&group.active_pane.focus_handle(cx), cx);
             cx.notify();
         }
     }
@@ -141,7 +139,9 @@ impl EventEmitter<MarkdownPreviewEvent> for MarkdownPreviewGroup {}
 impl Render for MarkdownPreviewGroup {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
         let decorator = ActivePaneDecorator::new(&self.active_pane, &self.workspace);
-        self.pane_group.render(None, None, &decorator, window, cx)
+        self.pane_group
+            .render(None, None, &decorator, window, cx)
+            .into_any_element()
     }
 }
 
