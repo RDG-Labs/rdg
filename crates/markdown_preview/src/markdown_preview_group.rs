@@ -1,14 +1,12 @@
-use std::any::TypeId;
-use std::sync::Arc;
-
 use anyhow::Result;
 use editor::Editor;
 use gpui::{
-    Action as _, App, Context, Entity, EventEmitter, FocusHandle, Focusable, Render, SharedString,
-    Subscription, WeakEntity, Window,
+    Action as _, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    Render, SharedString, Subscription, WeakEntity, Window,
 };
 use language::Buffer;
 use project::Project;
+use std::any::TypeId;
 use workspace::item::{Item, ItemBufferKind, ItemEvent, SaveOptions};
 use workspace::{ActivePaneDecorator, NewFile, Pane, PaneGroup, SplitDirection, Workspace};
 
@@ -142,13 +140,8 @@ impl EventEmitter<MarkdownPreviewEvent> for MarkdownPreviewGroup {}
 
 impl Render for MarkdownPreviewGroup {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl gpui::IntoElement {
-        self.pane_group.render(
-            None,
-            None,
-            &ActivePaneDecorator::new(&self.active_pane, &self.workspace),
-            window,
-            cx,
-        )
+        let decorator = ActivePaneDecorator::new(&self.active_pane, &self.workspace);
+        self.pane_group.render(None, None, &decorator, window, cx)
     }
 }
 

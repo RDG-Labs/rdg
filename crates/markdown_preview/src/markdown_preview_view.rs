@@ -163,21 +163,22 @@ impl MarkdownPreviewView {
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) {
-        let buffer = editor.read(cx).buffer().read(cx).as_singleton();
-        if let Some(existing) =
-            pane.read(cx)
+        let existing_index = {
+            let pane_ref = pane.read(cx);
+            let buffer = editor.read(cx).buffer().read(cx).as_singleton();
+            pane_ref
                 .items_of_type::<MarkdownPreviewGroup>()
                 .find(|group| {
                     buffer
                         .as_ref()
                         .is_some_and(|buffer| group.read(cx).is_previewing(buffer, cx))
                 })
-        {
-            if let Some(index) = pane.read(cx).index_for_item(&existing) {
-                pane.update(cx, |pane, cx| {
-                    pane.activate_item(index, true, true, window, cx);
-                });
-            }
+                .and_then(|group| pane_ref.index_for_item(&group))
+        };
+        if let Some(index) = existing_index {
+            pane.update(cx, |pane, cx| {
+                pane.activate_item(index, true, true, window, cx);
+            });
             return;
         }
 
