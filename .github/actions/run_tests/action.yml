@@ -1,6 +1,12 @@
 name: "Run tests"
 description: "Runs the tests"
 
+inputs:
+  filter-expr:
+    description: "Nextest filter expression"
+    required: false
+    default: "all()"
+
 runs:
   using: "composite"
   steps:
@@ -20,4 +26,4 @@ runs:
 
     - name: Run tests
       shell: bash -euxo pipefail {0}
-      run: cargo nextest run --workspace --no-fail-fast --failure-output immediate-final
+      run: cargo nextest run --workspace --no-fail-fast --failure-output immediate-final --filter-expr '${{ inputs.filter-expr }}'

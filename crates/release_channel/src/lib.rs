@@ -288,19 +288,19 @@ mod tests {
     fn test_docs_url_for_release_channel() {
         assert_eq!(
             ReleaseChannel::Dev.docs_url("settings"),
-            "https://zed.dev/docs/nightly/settings"
+            "https://github.com/RDG-Labs/rdg/tree/main/docs/src/nightly/settings"
         );
         assert_eq!(
             ReleaseChannel::Nightly.docs_url("settings"),
-            "https://zed.dev/docs/nightly/settings"
+            "https://github.com/RDG-Labs/rdg/tree/main/docs/src/nightly/settings"
         );
         assert_eq!(
             ReleaseChannel::Preview.docs_url("settings"),
-            "https://zed.dev/docs/preview/settings"
+            "https://github.com/RDG-Labs/rdg/tree/main/docs/src/preview/settings"
         );
         assert_eq!(
             ReleaseChannel::Stable.docs_url("settings"),
-            "https://zed.dev/docs/settings"
+            "https://github.com/RDG-Labs/rdg/tree/main/docs/src/settings"
         );
     }
 }

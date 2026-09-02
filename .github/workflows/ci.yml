@@ -65,6 +65,10 @@ jobs:
 
       - name: Run tests
         uses: ./.github/actions/run_tests
+        with:
+          # The rdg binary's GPUI integration tests require an interactive app lifecycle;
+          # platform build jobs still compile the binary on every CI run.
+          filter-expr: "not package(rdg)"
 
   build:
     name: Build ${{ matrix.name }}
