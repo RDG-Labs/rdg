@@ -207,48 +207,6 @@ impl MarkdownPreviewView {
         });
     }
 
-    fn activate_or_add_preview(
-        workspace: &mut Workspace,
-        editor: Entity<Editor>,
-        pane: Entity<Pane>,
-        focus: bool,
-        window: &mut Window,
-        cx: &mut Context<Workspace>,
-    ) {
-        let existing_view_idx =
-            Self::find_existing_independent_preview_item_idx(pane.read(cx), &editor, cx);
-        if let Some(existing_view_idx) = existing_view_idx {
-            pane.update(cx, |pane, cx| {
-                pane.activate_item(existing_view_idx, focus, focus, window, cx);
-            });
-        } else {
-            let view = Self::create_markdown_view(workspace, editor, window, cx);
-            pane.update(cx, |pane, cx| {
-                pane.add_item(Box::new(view), focus, focus, None, window, cx)
-            });
-        }
-        cx.notify();
-    }
-
-    fn find_existing_independent_preview_item_idx(
-        pane: &Pane,
-        editor: &Entity<Editor>,
-        cx: &App,
-    ) -> Option<usize> {
-        let target_buffer = editor.read(cx).buffer().read(cx).as_singleton()?;
-        pane.items_of_type::<MarkdownPreviewView>()
-            .find(|view| {
-                // Only look for independent (Default mode) previews, not Follow previews.
-                // Match by buffer entity rather than editor entity so the lookup survives
-                // workspace restoration, where the preview's bound editor may differ from
-                // the editor the user is currently invoking the action on even though both
-                // wrap the same source buffer.
-                view.read(cx).mode == MarkdownPreviewMode::Default
-                    && view.read(cx).is_previewing(&target_buffer, cx)
-            })
-            .and_then(|view| pane.index_for_item(&view))
-    }
-
     fn is_previewing(&self, buffer: &Entity<Buffer>, cx: &App) -> bool {
         self.active_editor.as_ref().is_some_and(|state| {
             state
