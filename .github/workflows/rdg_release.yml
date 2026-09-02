@@ -211,14 +211,7 @@ jobs:
           cache-targets: true
 
       - name: Build Rdg
-        run: |
-          set -euo pipefail
-          if [[ "${{ matrix.target }}" == "aarch64-apple-darwin" ]]; then
-            # Apple Silicon's new linker cannot place this large binary within its
-            # +/-128 MB branch range; ld_classic handles the branch islands.
-            export RUSTFLAGS="-C symbol-mangling-version=v0 --cfg tokio_unstable -C link-arg=-Wl,-ld_classic"
-          fi
-          cargo build --release --package rdg --target "${{ matrix.target }}"
+        run: cargo build --release --package rdg --target "${{ matrix.target }}"
 
       - name: Package Rdg app
         run: |
