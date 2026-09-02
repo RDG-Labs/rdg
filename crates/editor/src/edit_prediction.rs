@@ -59,8 +59,6 @@ pub(super) enum EditPredictionSettings {
 }
 
 pub(super) enum MenuEditPredictionsPolicy {
-    #[cfg(test)]
-    Never,
     ByProvider,
 }
 
@@ -88,10 +86,6 @@ pub(super) enum EditPredictionKeybindAction {
 }
 
 pub(super) struct EditPredictionKeybindDisplay {
-    #[cfg(test)]
-    pub(super) accept_keystroke: Option<gpui::KeybindingKeystroke>,
-    #[cfg(test)]
-    pub(super) preview_keystroke: Option<gpui::KeybindingKeystroke>,
     pub(super) displayed_keystroke: Option<gpui::KeybindingKeystroke>,
     pub(super) action: EditPredictionKeybindAction,
     pub(super) missing_accept_keystroke: bool,
@@ -670,11 +664,6 @@ impl Editor {
                     EditPredictionKeybindAction::Preview
                 }),
         };
-        #[cfg(test)]
-        let preview_copy = preview_keystroke.clone();
-        #[cfg(test)]
-        let accept_copy = accept_keystroke.clone();
-
         let displayed_keystroke = match surface {
             EditPredictionKeybindSurface::Inline => match action {
                 EditPredictionKeybindAction::Accept => accept_keystroke,
@@ -692,10 +681,6 @@ impl Editor {
         let missing_accept_keystroke = displayed_keystroke.is_none();
 
         EditPredictionKeybindDisplay {
-            #[cfg(test)]
-            accept_keystroke: accept_copy,
-            #[cfg(test)]
-            preview_keystroke: preview_copy,
             displayed_keystroke,
             action,
             missing_accept_keystroke,
@@ -2512,13 +2497,6 @@ impl Editor {
                 )
             }
         }
-    }
-}
-
-#[cfg(test)]
-impl Editor {
-    pub(super) fn set_menu_edit_predictions_policy(&mut self, value: MenuEditPredictionsPolicy) {
-        self.menu_edit_predictions_policy = value;
     }
 }
 

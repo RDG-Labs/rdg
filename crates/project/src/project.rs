@@ -3218,7 +3218,7 @@ impl Project {
                         .send(proto::UpdateBuffer {
                             project_id: 0,
                             buffer_id: buffer_id.to_proto(),
-                            operations: vec![operation.clone()],
+                            operations: vec![operation],
                         })
                         .ok();
                 }

@@ -1138,12 +1138,6 @@ mod tests {
         assert!(options.add_dirs_to_sidebar);
     }
 
-    fn agent_url_with_prompt(prompt: &str) -> String {
-        let mut serializer = url::form_urlencoded::Serializer::new("zed://agent?".to_string());
-        serializer.append_pair("prompt", prompt);
-        serializer.finish()
-    }
-
     #[gpui::test]
     fn test_parse_focus_app_url(cx: &mut TestAppContext) {
         let _app_state = init_test(cx);

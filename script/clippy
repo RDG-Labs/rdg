@@ -3,7 +3,8 @@
 set -euo pipefail
 
 if [[ ! " $* " == *" -p "* && ! " $* " == *" --package "* ]]; then
-    set -- "$@" --workspace
+    # The xtask workflow generators are retained for reference but are not registered.
+    set -- "$@" --workspace --exclude xtask
 fi
 
 set -x

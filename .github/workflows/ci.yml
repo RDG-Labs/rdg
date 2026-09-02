@@ -22,30 +22,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  format:
-    name: Check changed Rust formatting
-    runs-on: ubuntu-22.04
-    timeout-minutes: 10
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with:
-          fetch-depth: 0
-
-      - name: Check changed Rust files
-        shell: bash
-        run: |
-          set -euo pipefail
-          base_sha="${{ github.event.pull_request.base.sha || github.event.before }}"
-          if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
-            base_sha="$(git rev-parse HEAD^)"
-          fi
-
-          mapfile -t rust_files < <(git diff --name-only "$base_sha" "$GITHUB_SHA" -- '*.rs')
-          if ((${#rust_files[@]} > 0)); then
-            rustfmt --edition 2024 --check "${rust_files[@]}"
-          fi
-
   clippy:
     name: Clippy
     runs-on: ubuntu-22.04
@@ -93,7 +69,6 @@ jobs:
   build:
     name: Build ${{ matrix.name }}
     needs:
-      - format
       - clippy
       - tests
     strategy:

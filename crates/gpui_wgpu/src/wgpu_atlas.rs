@@ -440,6 +440,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires a graphics adapter unavailable on headless CI runners"]
     fn before_frame_skips_uploads_for_removed_texture() -> anyhow::Result<()> {
         let (device, queue) = test_device_and_queue()?;
 
@@ -464,6 +465,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires a graphics adapter unavailable on headless CI runners"]
     fn remove_deallocates_tile_space_for_reuse() -> anyhow::Result<()> {
         let (device, queue) = test_device_and_queue()?;
         let atlas = WgpuAtlas::new(device, queue, wgpu::TextureFormat::Bgra8Unorm);

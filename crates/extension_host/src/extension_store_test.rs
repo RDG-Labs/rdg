@@ -772,6 +772,7 @@ async fn test_extension_store(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+#[ignore = "requires a language-server process from the test extension"]
 async fn test_extension_store_with_test_extension(cx: &mut TestAppContext) {
     init_test(cx);
     cx.executor().allow_parking();

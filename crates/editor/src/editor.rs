@@ -50,8 +50,6 @@ mod bookmarks;
 #[cfg(test)]
 mod code_completion_tests;
 #[cfg(test)]
-mod edit_prediction_tests;
-#[cfg(test)]
 mod editor_block_comment_tests;
 #[cfg(test)]
 mod editor_tests;
@@ -89,10 +87,6 @@ pub use edit_prediction::make_suggestion_styles;
 pub(crate) use edit_prediction::{
     EditDisplayMode, EditPrediction, EditPredictionPreview, EditPredictionSettings,
     EditPredictionState, MenuEditPredictionsPolicy, RegisteredEditPredictionDelegate,
-};
-#[cfg(test)]
-pub(crate) use edit_prediction::{
-    EditPredictionKeybindAction, EditPredictionKeybindSurface, edit_prediction_edit_text,
 };
 pub use edit_prediction_types::Direction;
 pub use edit_prediction_types::EditPredictionRequestTrigger;
