@@ -1542,7 +1542,8 @@ impl Item for MarkdownPreviewView {
                 let title = buffer.title(cx);
                 title
             })
-            .unwrap_or_else(|| SharedString::from("Markdown Preview"))
+            .unwrap_or_else(|| "Markdown Preview".into())
+            .into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
