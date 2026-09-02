@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result};
+use editor::display_map::ToDisplayPoint;
 use editor::items::open_resolved_target;
 use editor::scroll::Autoscroll;
 use editor::{
@@ -15,7 +16,8 @@ use editor::{
 use gpui::{
     App, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable, ImageSource,
     InteractiveElement, IntoElement, IsZero, Pixels, Render, Resource, RetainAllImageCache,
-    ScrollHandle, SharedString, SharedUri, Subscription, Task, WeakEntity, Window, point, px,
+    ScrollHandle, ScrollWheelEvent, SharedString, SharedUri, Subscription, Task, WeakEntity,
+    Window, point, px,
 };
 use language::{Buffer, LanguageRegistry};
 use markdown::{
@@ -24,6 +26,7 @@ use markdown::{
 };
 use project::search::SearchQuery;
 use project::{Project, ProjectPath, image_store};
+use rdg_actions::{DecreaseBufferFontSize, IncreaseBufferFontSize, ResetBufferFontSize};
 use settings::{SeedQuerySetting, Settings, update_settings_file};
 use theme::{SystemAppearance, Theme, ThemeRegistry};
 use theme_settings::ThemeSettings;
@@ -44,8 +47,8 @@ use workspace::searchable::{
     Direction, SearchEvent, SearchOptions, SearchToken, SearchableItem, SearchableItemHandle,
 };
 use workspace::{ItemId, Pane, SaveIntent, Workspace, WorkspaceId, delete_unloaded_items};
-use rdg_actions::{DecreaseBufferFontSize, IncreaseBufferFontSize, ResetBufferFontSize};
 
+use crate::markdown_preview_group::MarkdownPreviewGroup;
 use crate::markdown_preview_settings::MarkdownPreviewSettings;
 use crate::{
     CloseAndReturnToEditor, OpenFollowingPreview, OpenPreview, OpenPreviewToTheSide, ScrollDown,
@@ -162,7 +165,31 @@ impl MarkdownPreviewView {
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) {
-        Self::activate_or_add_preview(workspace, editor, pane, true, window, cx);
+        let existing_index = {
+            let pane_ref = pane.read(cx);
+            let buffer = editor.read(cx).buffer().read(cx).as_singleton();
+            pane_ref
+                .items_of_type::<MarkdownPreviewGroup>()
+                .find(|group| {
+                    buffer
+                        .as_ref()
+                        .is_some_and(|buffer| group.read(cx).is_previewing(buffer, cx))
+                })
+                .and_then(|group| pane_ref.index_for_item(&group))
+        };
+        if let Some(index) = existing_index {
+            pane.update(cx, |pane, cx| {
+                pane.activate_item(index, true, true, window, cx);
+            });
+            return;
+        }
+
+        let preview = Self::create_markdown_view(workspace, editor.clone(), window, cx);
+        let group = MarkdownPreviewGroup::new(workspace, editor.clone(), preview, window, cx);
+        pane.update(cx, |pane, cx| {
+            pane.add_item(Box::new(group), true, true, None, window, cx);
+            pane.remove_item(editor.entity_id(), false, false, window, cx);
+        });
     }
 
     pub fn open_preview_to_the_side_of_pane(
@@ -173,50 +200,11 @@ impl MarkdownPreviewView {
         cx: &mut Context<Workspace>,
     ) {
         let target_pane = workspace.adjacent_pane_of(&origin_pane, window, cx);
-        Self::activate_or_add_preview(workspace, editor.clone(), target_pane, false, window, cx);
-        editor.focus_handle(cx).focus(window, cx);
-    }
-
-    fn activate_or_add_preview(
-        workspace: &mut Workspace,
-        editor: Entity<Editor>,
-        pane: Entity<Pane>,
-        focus: bool,
-        window: &mut Window,
-        cx: &mut Context<Workspace>,
-    ) {
-        let existing_view_idx =
-            Self::find_existing_independent_preview_item_idx(pane.read(cx), &editor, cx);
-        if let Some(existing_view_idx) = existing_view_idx {
-            pane.update(cx, |pane, cx| {
-                pane.activate_item(existing_view_idx, focus, focus, window, cx);
-            });
-        } else {
-            let view = Self::create_markdown_view(workspace, editor, window, cx);
-            pane.update(cx, |pane, cx| {
-                pane.add_item(Box::new(view), focus, focus, None, window, cx)
-            });
-        }
-        cx.notify();
-    }
-
-    fn find_existing_independent_preview_item_idx(
-        pane: &Pane,
-        editor: &Entity<Editor>,
-        cx: &App,
-    ) -> Option<usize> {
-        let target_buffer = editor.read(cx).buffer().read(cx).as_singleton()?;
-        pane.items_of_type::<MarkdownPreviewView>()
-            .find(|view| {
-                // Only look for independent (Default mode) previews, not Follow previews.
-                // Match by buffer entity rather than editor entity so the lookup survives
-                // workspace restoration, where the preview's bound editor may differ from
-                // the editor the user is currently invoking the action on even though both
-                // wrap the same source buffer.
-                view.read(cx).mode == MarkdownPreviewMode::Default
-                    && view.read(cx).is_previewing(&target_buffer, cx)
-            })
-            .and_then(|view| pane.index_for_item(&view))
+        let preview = Self::create_markdown_view(workspace, editor.clone(), window, cx);
+        let group = MarkdownPreviewGroup::new(workspace, editor, preview, window, cx);
+        target_pane.update(cx, |pane, cx| {
+            pane.add_item(Box::new(group), true, true, None, window, cx);
+        });
     }
 
     fn is_previewing(&self, buffer: &Entity<Buffer>, cx: &App) -> bool {
@@ -458,6 +446,14 @@ impl MarkdownPreviewView {
                         this.update_markdown_from_active_editor(false, false, window, cx);
                         cx.emit(MarkdownPreviewEvent::SourceFileHandleChanged);
                     }
+                    EditorEvent::ScrollPositionChanged { .. } => {
+                        let source_index = editor.update(cx, |editor, cx| {
+                            Self::visible_source_index(editor, window, cx)
+                        });
+                        if let Some(source_index) = source_index {
+                            this.sync_preview_to_source_index(source_index, true, cx);
+                        }
+                    }
                     EditorEvent::SelectionsChanged { .. } => {
                         let (selection_start, editor_is_focused) =
                             editor.update(cx, |editor, cx| {
@@ -624,6 +620,45 @@ impl MarkdownPreviewView {
         } else {
             None
         }
+    }
+
+    fn visible_source_index(editor: &Editor, window: &Window, cx: &mut App) -> Option<usize> {
+        let snapshot = editor.snapshot(window, cx);
+        let visible_range = editor.multi_buffer_visible_range(&snapshot.display_snapshot, cx);
+        let (buffer_snapshot, offset) = snapshot
+            .display_snapshot
+            .buffer_snapshot()
+            .point_to_buffer_offset(visible_range.start)?;
+        let source_buffer = editor.buffer().read(cx).as_singleton()?;
+        (buffer_snapshot.remote_id() == source_buffer.read(cx).remote_id()).then_some(offset.0)
+    }
+
+    fn sync_editor_to_preview_scroll(
+        &mut self,
+        _: &ScrollWheelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(source_index) = self
+            .markdown
+            .read(cx)
+            .source_index_for_root_block(self.scroll_handle.top_item())
+        else {
+            return;
+        };
+        let Some(editor) = self
+            .active_editor
+            .as_ref()
+            .map(|state| state.editor.clone())
+        else {
+            return;
+        };
+        editor.update(cx, |editor, cx| {
+            let snapshot = editor.snapshot(window, cx);
+            let display_point =
+                MultiBufferOffset(source_index).to_display_point(&snapshot.display_snapshot);
+            editor.set_scroll_top_row(display_point.row(), window, cx);
+        });
     }
 
     fn sync_preview_to_source_index(
@@ -1679,6 +1714,7 @@ impl Render for MarkdownPreviewView {
                         .size_full()
                         .overflow_y_scroll()
                         .track_scroll(&self.scroll_handle)
+                        .on_scroll_wheel(cx.listener(Self::sync_editor_to_preview_scroll))
                         .restrict_scroll_to_axis()
                         .p_4()
                         .child({
