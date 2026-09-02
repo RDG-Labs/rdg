@@ -5,6 +5,26 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump
+        required: true
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      channel:
+        description: Release channel
+        required: true
+        type: choice
+        default: rc
+        options:
+          - release
+          - rc
+          - alpha
+          - beta
 
 permissions:
   contents: read
@@ -19,53 +39,87 @@ concurrency:
 
 jobs:
   validate_tag:
-    name: Validate release tag
+    name: Calculate release version
     runs-on: ubuntu-22.04
     outputs:
       version: ${{ steps.release.outputs.version }}
+      app_version: ${{ steps.release.outputs.app_version }}
       channel: ${{ steps.release.outputs.channel }}
-      release_branch: ${{ steps.release.outputs.release_branch }}
+      tag: ${{ steps.release.outputs.tag }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           fetch-depth: 0
 
-      - name: Validate tag and release branch
+      - name: Validate or calculate release
         id: release
         shell: bash
         run: |
           set -euo pipefail
 
-          tag="$GITHUB_REF_NAME"
-          if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-rc\.([0-9]+)$ ]]; then
-            version="${BASH_REMATCH[1]}"
-            channel=preview
-          elif [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            version="${BASH_REMATCH[1]}"
-            channel=stable
-          else
-            echo "Unsupported release tag: $tag. Use vX.Y.Z or vX.Y.Z-rc.N." >&2
-            exit 1
-          fi
-
           package_version="$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[] | select(.name == "rdg") | .version')"
-          if [[ "$package_version" != "$version" ]]; then
-            echo "Tag version $version does not match Rdg version $package_version." >&2
-            exit 1
-          fi
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            tag="$GITHUB_REF_NAME"
+            if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              version="${BASH_REMATCH[1]}"
+              app_version="$version"
+              channel=stable
+            elif [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-(rc|alpha|beta)\.([0-9]+)$ ]]; then
+              version="${BASH_REMATCH[1]}"
+              app_version="${tag#v}"
+              channel=preview
+            else
+              echo "Unsupported release tag: $tag. Use vX.Y.Z or vX.Y.Z-{rc,alpha,beta}.N." >&2
+              exit 1
+            fi
 
-          release_branch="release/v$version"
-          git fetch --no-tags origin "refs/heads/$release_branch:refs/remotes/origin/$release_branch"
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" "refs/remotes/origin/$release_branch"; then
-            echo "Tag $tag must point to a commit contained in $release_branch." >&2
-            exit 1
+            if [[ "$package_version" != "$version" ]]; then
+              echo "Tag version $version does not match Rdg version $package_version." >&2
+              exit 1
+            fi
+
+            release_branch="release/v$version"
+            git fetch --no-tags origin "refs/heads/$release_branch:refs/remotes/origin/$release_branch"
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" "refs/remotes/origin/$release_branch"; then
+              echo "Tag $tag must point to a commit contained in $release_branch." >&2
+              exit 1
+            fi
+          else
+            IFS=. read -r major minor patch <<< "$package_version"
+            case "${{ inputs.bump }}" in
+              patch) patch=$((patch + 1)) ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              *) echo "Unsupported version bump: ${{ inputs.bump }}" >&2; exit 1 ;;
+            esac
+            version="$major.$minor.$patch"
+            selected_channel="${{ inputs.channel }}"
+            case "$selected_channel" in
+              release)
+                tag="v$version"
+                app_version="$version"
+                channel=stable
+                ;;
+              rc|alpha|beta)
+                git fetch --tags --force
+                next_number=1
+                while git rev-parse --verify --quiet "refs/tags/v$version-$selected_channel.$next_number" >/dev/null; do
+                  next_number=$((next_number + 1))
+                done
+                tag="v$version-$selected_channel.$next_number"
+                app_version="${tag#v}"
+                channel=preview
+                ;;
+              *) echo "Unsupported release channel: $selected_channel" >&2; exit 1 ;;
+            esac
           fi
 
           {
             echo "version=$version"
+            echo "app_version=$app_version"
             echo "channel=$channel"
-            echo "release_branch=$release_branch"
+            echo "tag=$tag"
           } >> "$GITHUB_OUTPUT"
 
   build_linux:
@@ -74,9 +128,10 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     env:
-      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
+      RELEASE_VERSION: ${{ needs.validate_tag.outputs.app_version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       ZED_RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+      ZED_APP_VERSION: ${{ needs.validate_tag.outputs.app_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -133,9 +188,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
     env:
-      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
+      RELEASE_VERSION: ${{ needs.validate_tag.outputs.app_version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       ZED_RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+      ZED_APP_VERSION: ${{ needs.validate_tag.outputs.app_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -220,9 +276,10 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 180
     env:
-      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
+      RELEASE_VERSION: ${{ needs.validate_tag.outputs.app_version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       ZED_RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+      ZED_APP_VERSION: ${{ needs.validate_tag.outputs.app_version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -279,7 +336,8 @@ jobs:
     environment:
       name: ${{ needs.validate_tag.outputs.channel == 'stable' && 'production' || 'release-candidate' }}
     env:
-      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
+      RELEASE_VERSION: ${{ needs.validate_tag.outputs.app_version }}
+      RELEASE_TAG: ${{ needs.validate_tag.outputs.tag }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -379,13 +437,18 @@ jobs:
               rdg-macos-aarch64.dmg
           ) > release-assets/SHA256SUMS
           assets=(release-assets/*)
-          tag="$GITHUB_REF_NAME"
+          tag="$RELEASE_TAG"
           repo="$GITHUB_REPOSITORY"
 
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
             gh release upload "$tag" --repo "$repo" "${assets[@]}" --clobber
           else
-            release_options=(--title "Rdg ${tag#v}" --generate-notes --verify-tag)
+            release_options=(--title "Rdg ${tag#v}" --generate-notes)
+            if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+              release_options+=(--verify-tag)
+            else
+              release_options+=(--target "$GITHUB_SHA")
+            fi
             if [[ "$RELEASE_CHANNEL" == "preview" ]]; then
               release_options+=(--prerelease)
             fi
