@@ -98,6 +98,10 @@ jobs:
             case "$selected_channel" in
               release)
                 tag="v$version"
+                if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+                  echo "Tag $tag already exists; choose a different version bump." >&2
+                  exit 1
+                fi
                 app_version="$version"
                 channel=stable
                 ;;
@@ -128,7 +132,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     env:
-      RELEASE_VERSION: ${{ needs.validate_tag.outputs.app_version }}
+      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       ZED_RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       ZED_APP_VERSION: ${{ needs.validate_tag.outputs.app_version }}
@@ -188,7 +192,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
     env:
-      RELEASE_VERSION: ${{ needs.validate_tag.outputs.app_version }}
+      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       ZED_RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       ZED_APP_VERSION: ${{ needs.validate_tag.outputs.app_version }}
@@ -276,7 +280,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 180
     env:
-      RELEASE_VERSION: ${{ needs.validate_tag.outputs.app_version }}
+      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       ZED_RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       ZED_APP_VERSION: ${{ needs.validate_tag.outputs.app_version }}
@@ -336,7 +340,7 @@ jobs:
     environment:
       name: ${{ needs.validate_tag.outputs.channel == 'stable' && 'production' || 'release-candidate' }}
     env:
-      RELEASE_VERSION: ${{ needs.validate_tag.outputs.app_version }}
+      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_TAG: ${{ needs.validate_tag.outputs.tag }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
