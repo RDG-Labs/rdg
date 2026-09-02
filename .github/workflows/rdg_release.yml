@@ -86,7 +86,13 @@ jobs:
               exit 1
             fi
           else
-            IFS=. read -r major minor patch <<< "$package_version"
+            git fetch --tags --force
+            base_version="$package_version"
+            latest_stable_version="$(git tag -l 'v*' | sed -nE 's/^v([0-9]+\\.[0-9]+\\.[0-9]+)$/\\1/p' | sort -V | tail -1)"
+            if [[ -n "$latest_stable_version" ]] && [[ "$(printf '%s\\n' "$base_version" "$latest_stable_version" | sort -V | tail -1)" == "$latest_stable_version" ]]; then
+              base_version="$latest_stable_version"
+            fi
+            IFS=. read -r major minor patch <<< "$base_version"
             case "${{ inputs.bump }}" in
               patch) patch=$((patch + 1)) ;;
               minor) minor=$((minor + 1)); patch=0 ;;
@@ -106,7 +112,6 @@ jobs:
                 channel=stable
                 ;;
               rc|alpha|beta)
-                git fetch --tags --force
                 next_number=1
                 while git rev-parse --verify --quiet "refs/tags/v$version-$selected_channel.$next_number" >/dev/null; do
                   next_number=$((next_number + 1))
