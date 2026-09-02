@@ -46,6 +46,7 @@ use workspace::searchable::{
 };
 use workspace::{ItemId, Pane, SaveIntent, Workspace, WorkspaceId, delete_unloaded_items};
 
+use crate::markdown_preview_group::MarkdownPreviewGroup;
 use crate::markdown_preview_settings::MarkdownPreviewSettings;
 use crate::{
     CloseAndReturnToEditor, OpenFollowingPreview, OpenPreview, OpenPreviewToTheSide, ScrollDown,
@@ -162,14 +163,30 @@ impl MarkdownPreviewView {
         window: &mut Window,
         cx: &mut Context<Workspace>,
     ) {
-        Self::activate_or_add_preview(workspace, editor.clone(), pane.clone(), true, window, cx);
-
-        // The preview renders the source editor alongside itself, so keep both views in one tab.
-        if pane.read(cx).index_for_item(&editor).is_some() {
-            pane.update(cx, |pane, cx| {
-                pane.remove_item(editor.entity_id(), false, false, window, cx);
-            });
+        let buffer = editor.read(cx).buffer().read(cx).as_singleton();
+        if let Some(existing) =
+            pane.read(cx)
+                .items_of_type::<MarkdownPreviewGroup>()
+                .find(|group| {
+                    buffer
+                        .as_ref()
+                        .is_some_and(|buffer| group.read(cx).is_previewing(buffer, cx))
+                })
+        {
+            if let Some(index) = pane.read(cx).index_for_item(&existing) {
+                pane.update(cx, |pane, cx| {
+                    pane.activate_item(index, true, true, window, cx);
+                });
+            }
+            return;
         }
+
+        let preview = Self::create_markdown_view(workspace, editor.clone(), window, cx);
+        let group = MarkdownPreviewGroup::new(workspace, editor.clone(), preview, window, cx);
+        pane.update(cx, |pane, cx| {
+            pane.add_item(Box::new(group), true, true, None, window, cx);
+            pane.remove_item(editor.entity_id(), false, false, window, cx);
+        });
     }
 
     pub fn open_preview_to_the_side_of_pane(
@@ -180,12 +197,11 @@ impl MarkdownPreviewView {
         cx: &mut Context<Workspace>,
     ) {
         let target_pane = workspace.adjacent_pane_of(&origin_pane, window, cx);
-        Self::activate_or_add_preview(workspace, editor.clone(), target_pane, true, window, cx);
-        if origin_pane.read(cx).index_for_item(&editor).is_some() {
-            origin_pane.update(cx, |pane, cx| {
-                pane.remove_item(editor.entity_id(), false, false, window, cx);
-            });
-        }
+        let preview = Self::create_markdown_view(workspace, editor.clone(), window, cx);
+        let group = MarkdownPreviewGroup::new(workspace, editor, preview, window, cx);
+        target_pane.update(cx, |pane, cx| {
+            pane.add_item(Box::new(group), true, true, None, window, cx);
+        });
     }
 
     fn activate_or_add_preview(
@@ -1540,10 +1556,9 @@ impl Item for MarkdownPreviewView {
             .map(|editor_state| {
                 let buffer = editor_state.editor.read(cx).buffer().read(cx);
                 let title = buffer.title(cx);
-                title
+                format!("Preview {}", title).into()
             })
-            .unwrap_or_else(|| "Markdown Preview".into())
-            .into()
+            .unwrap_or_else(|| SharedString::from("Markdown Preview"))
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -1657,10 +1672,6 @@ impl Render for MarkdownPreviewView {
             .unwrap_or_else(|| cx.theme().colors().editor_background);
         let preview_font_size = ThemeSettings::get_global(cx).markdown_preview_font_size(cx);
         let hovered_url = self.hovered_url.clone();
-        let source_editor = self
-            .active_editor
-            .as_ref()
-            .map(|editor_state| editor_state.editor.clone());
         div()
             .image_cache(self.image_cache.clone())
             .id("MarkdownPreview")
@@ -1689,104 +1700,80 @@ impl Render for MarkdownPreviewView {
             .relative()
             .bg(bg_color)
             .child(
-                h_flex()
-                    .size_full()
-                    .children(
-                        source_editor
-                            .map(|editor| div().flex_1().min_w_0().min_h_0().child(editor)),
-                    )
-                    .child(
-                        WithRemSize::new(preview_font_size).size_full().child(
+                WithRemSize::new(preview_font_size).size_full().child(
+                    div()
+                        .id("markdown-preview-scroll-container")
+                        .size_full()
+                        .overflow_y_scroll()
+                        .track_scroll(&self.scroll_handle)
+                        .restrict_scroll_to_axis()
+                        .p_4()
+                        .child({
+                            let markdown_element =
+                                self.render_markdown_element(&preview_theme, window, cx);
+                            let markdown = self.markdown.clone();
+                            let max_width = MarkdownPreviewSettings::get_global(cx).max_width;
+                            let content = right_click_menu("markdown-preview-context-menu")
+                                .trigger(move |_, _, _| markdown_element)
+                                .maybe_menu(move |window, cx| {
+                                    let focus = window.focused(cx);
+                                    let markdown = markdown.read(cx);
+                                    let context_menu_link = markdown.context_menu_link().cloned();
+                                    let selected_text =
+                                        markdown.context_menu_selected_text().cloned();
+                                    let selected_markdown =
+                                        markdown.context_menu_selected_markdown().cloned();
+                                    if context_menu_link.is_none()
+                                        && selected_text.is_none()
+                                        && selected_markdown.is_none()
+                                    {
+                                        return None;
+                                    }
+                                    Some(ContextMenu::build(window, cx, move |menu, _, _cx| {
+                                        menu.when_some(focus, |menu, focus| menu.context(focus))
+                                            .when_some(selected_text, |menu, text| {
+                                                menu.entry(
+                                                    "Copy",
+                                                    Some(Box::new(markdown::Copy)),
+                                                    move |_, cx| {
+                                                        cx.write_to_clipboard(
+                                                            ClipboardItem::new_string(
+                                                                text.to_string(),
+                                                            ),
+                                                        );
+                                                    },
+                                                )
+                                            })
+                                            .when_some(selected_markdown, |menu, text| {
+                                                menu.entry(
+                                                    "Copy as Markdown",
+                                                    Some(Box::new(markdown::CopyAsMarkdown)),
+                                                    move |_, cx| {
+                                                        cx.write_to_clipboard(
+                                                            ClipboardItem::new_string(
+                                                                text.to_string(),
+                                                            ),
+                                                        );
+                                                    },
+                                                )
+                                            })
+                                            .when_some(context_menu_link, |menu, url| {
+                                                menu.entry("Copy Link", None, move |_, cx| {
+                                                    cx.write_to_clipboard(
+                                                        ClipboardItem::new_string(url.to_string()),
+                                                    );
+                                                })
+                                            })
+                                    }))
+                                });
                             div()
-                                .id("markdown-preview-scroll-container")
-                                .size_full()
-                                .overflow_y_scroll()
-                                .track_scroll(&self.scroll_handle)
-                                .restrict_scroll_to_axis()
-                                .p_4()
-                                .child({
-                                    let markdown_element =
-                                        self.render_markdown_element(&preview_theme, window, cx);
-                                    let markdown = self.markdown.clone();
-                                    let max_width =
-                                        MarkdownPreviewSettings::get_global(cx).max_width;
-                                    let content = right_click_menu("markdown-preview-context-menu")
-                                        .trigger(move |_, _, _| markdown_element)
-                                        .maybe_menu(move |window, cx| {
-                                            let focus = window.focused(cx);
-                                            let markdown = markdown.read(cx);
-                                            let context_menu_link =
-                                                markdown.context_menu_link().cloned();
-                                            let selected_text =
-                                                markdown.context_menu_selected_text().cloned();
-                                            let selected_markdown =
-                                                markdown.context_menu_selected_markdown().cloned();
-                                            if context_menu_link.is_none()
-                                                && selected_text.is_none()
-                                                && selected_markdown.is_none()
-                                            {
-                                                return None;
-                                            }
-                                            Some(ContextMenu::build(
-                                                window,
-                                                cx,
-                                                move |menu, _, _cx| {
-                                                    menu.when_some(focus, |menu, focus| {
-                                                        menu.context(focus)
-                                                    })
-                                                    .when_some(selected_text, |menu, text| {
-                                                        menu.entry(
-                                                            "Copy",
-                                                            Some(Box::new(markdown::Copy)),
-                                                            move |_, cx| {
-                                                                cx.write_to_clipboard(
-                                                                    ClipboardItem::new_string(
-                                                                        text.to_string(),
-                                                                    ),
-                                                                );
-                                                            },
-                                                        )
-                                                    })
-                                                    .when_some(selected_markdown, |menu, text| {
-                                                        menu.entry(
-                                                            "Copy as Markdown",
-                                                            Some(Box::new(
-                                                                markdown::CopyAsMarkdown,
-                                                            )),
-                                                            move |_, cx| {
-                                                                cx.write_to_clipboard(
-                                                                    ClipboardItem::new_string(
-                                                                        text.to_string(),
-                                                                    ),
-                                                                );
-                                                            },
-                                                        )
-                                                    })
-                                                    .when_some(context_menu_link, |menu, url| {
-                                                        menu.entry(
-                                                            "Copy Link",
-                                                            None,
-                                                            move |_, cx| {
-                                                                cx.write_to_clipboard(
-                                                                    ClipboardItem::new_string(
-                                                                        url.to_string(),
-                                                                    ),
-                                                                );
-                                                            },
-                                                        )
-                                                    })
-                                                },
-                                            ))
-                                        });
-                                    div()
-                                        .w_full()
-                                        .when_some(max_width, |this, max_width| {
-                                            this.max_w(max_width).mx_auto()
-                                        })
-                                        .child(content)
-                                }),
-                        ),
-                    ),
+                                .w_full()
+                                .when_some(max_width, |this, max_width| {
+                                    this.max_w(max_width).mx_auto()
+                                })
+                                .child(content)
+                        }),
+                ),
             )
             .custom_scrollbars(
                 Scrollbars::for_settings::<EditorSettingsScrollbarProxy>()
@@ -2914,17 +2901,12 @@ mod tests {
                     assert!(diff_text.contains("old"));
                     assert!(diff_text.contains("new"));
 
-                    let pane = workspace.active_pane().clone();
-                    MarkdownPreviewView::open_preview_in_pane(
-                        workspace,
-                        editor,
-                        pane.clone(),
-                        window,
-                        cx,
-                    );
-                    pane.active_item()
-                        .and_then(|item| item.downcast::<MarkdownPreviewView>())
-                        .expect("opening the preview should activate it")
+                    let preview =
+                        MarkdownPreviewView::create_markdown_view(workspace, editor, window, cx);
+                    workspace.active_pane().update(cx, |pane, cx| {
+                        pane.add_item(Box::new(preview.clone()), true, true, None, window, cx)
+                    });
+                    preview
                 })
             })
             .unwrap();
