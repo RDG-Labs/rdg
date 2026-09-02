@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result};
+use editor::display_map::ToDisplayPoint;
 use editor::items::open_resolved_target;
 use editor::scroll::Autoscroll;
 use editor::{
@@ -15,7 +16,8 @@ use editor::{
 use gpui::{
     App, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable, ImageSource,
     InteractiveElement, IntoElement, IsZero, Pixels, Render, Resource, RetainAllImageCache,
-    ScrollHandle, SharedString, SharedUri, Subscription, Task, WeakEntity, Window, point, px,
+    ScrollHandle, ScrollWheelEvent, SharedString, SharedUri, Subscription, Task, WeakEntity,
+    Window, point, px,
 };
 use language::{Buffer, LanguageRegistry};
 use markdown::{
@@ -671,6 +673,34 @@ impl MarkdownPreviewView {
             .point_to_buffer_offset(visible_range.start)?;
         let source_buffer = editor.buffer().read(cx).as_singleton()?;
         (buffer_snapshot.remote_id() == source_buffer.read(cx).remote_id()).then_some(offset.0)
+    }
+
+    fn sync_editor_to_preview_scroll(
+        &mut self,
+        _: &ScrollWheelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(source_index) = self
+            .markdown
+            .read(cx)
+            .source_index_for_root_block(self.scroll_handle.top_item())
+        else {
+            return;
+        };
+        let Some(editor) = self
+            .active_editor
+            .as_ref()
+            .map(|state| state.editor.clone())
+        else {
+            return;
+        };
+        editor.update(cx, |editor, cx| {
+            let snapshot = editor.snapshot(window, cx);
+            let display_point =
+                MultiBufferOffset(source_index).to_display_point(&snapshot.display_snapshot);
+            editor.set_scroll_top_row(display_point.row(), window, cx);
+        });
     }
 
     fn sync_preview_to_source_index(
@@ -1726,6 +1756,7 @@ impl Render for MarkdownPreviewView {
                         .size_full()
                         .overflow_y_scroll()
                         .track_scroll(&self.scroll_handle)
+                        .on_scroll_wheel(cx.listener(Self::sync_editor_to_preview_scroll))
                         .restrict_scroll_to_axis()
                         .p_4()
                         .child({

@@ -1580,6 +1580,10 @@ impl ParsedMarkdown {
         ranges
     }
 
+    pub fn source_index_for_root_block(&self, root_block: usize) -> Option<usize> {
+        self.root_block_starts.get(root_block).copied()
+    }
+
     pub fn root_block_for_source_index(&self, source_index: usize) -> Option<usize> {
         if self.root_block_starts.is_empty() {
             return None;
