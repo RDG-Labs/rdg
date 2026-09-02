@@ -245,7 +245,7 @@ jobs:
               <key>CFBundleExecutable</key>
               <string>Rdg</string>
               <key>CFBundleIconFile</key>
-              <string>Rdg</string>
+              <string>Rdg.icns</string>
               <key>CFBundleIdentifier</key>
               <string>dev.rdg.Rdg</string>
               <key>CFBundleName</key>
