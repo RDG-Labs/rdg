@@ -1,0 +1,30 @@
+name: verify-macos-arm
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  RELEASE_CHANNEL: dev
+  ZED_RELEASE_CHANNEL: dev
+
+jobs:
+  build:
+    name: Build macOS aarch64
+    runs-on: macos-14
+    timeout-minutes: 180
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        with:
+          cache-targets: true
+
+      - name: Build Rdg
+        run: cargo build --release --package rdg --target aarch64-apple-darwin
