@@ -92,7 +92,7 @@ jobs:
             runner: windows-2022
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       RELEASE_CHANNEL: dev
       ZED_RELEASE_CHANNEL: dev
