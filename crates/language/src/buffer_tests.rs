@@ -1603,6 +1603,7 @@ fn test_bracket_colorization_indices_remain_stable_across_row_chunks(cx: &mut Ap
     );
 
     let buffer = cx.new(|cx| Buffer::local(text.clone(), cx).with_language(json_lang(), cx));
+    cx.background_executor().run_until_parked();
     let snapshot = buffer.update(cx, |buffer, _| buffer.snapshot());
 
     let late_open_offset = property_object_open_offsets[400];
