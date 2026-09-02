@@ -643,6 +643,9 @@ impl MarkdownEscaper {
 }
 
 impl Markdown {
+    pub fn source_index_for_root_block(&self, root_block: usize) -> Option<usize> {
+        self.parsed_markdown.source_index_for_root_block(root_block)
+    }
     pub fn new(
         source: SharedString,
         language_registry: Option<Arc<LanguageRegistry>>,
