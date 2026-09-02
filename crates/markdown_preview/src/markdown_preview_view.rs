@@ -486,6 +486,14 @@ impl MarkdownPreviewView {
                         this.update_markdown_from_active_editor(false, false, window, cx);
                         cx.emit(MarkdownPreviewEvent::SourceFileHandleChanged);
                     }
+                    EditorEvent::ScrollPositionChanged { .. } => {
+                        let source_index = editor.update(cx, |editor, cx| {
+                            Self::visible_source_index(editor, window, cx)
+                        });
+                        if let Some(source_index) = source_index {
+                            this.sync_preview_to_source_index(source_index, true, cx);
+                        }
+                    }
                     EditorEvent::SelectionsChanged { .. } => {
                         let (selection_start, editor_is_focused) =
                             editor.update(cx, |editor, cx| {
@@ -652,6 +660,17 @@ impl MarkdownPreviewView {
         } else {
             None
         }
+    }
+
+    fn visible_source_index(editor: &Editor, window: &Window, cx: &mut App) -> Option<usize> {
+        let snapshot = editor.snapshot(window, cx);
+        let visible_range = editor.multi_buffer_visible_range(&snapshot.display_snapshot, cx);
+        let (buffer_snapshot, offset) = snapshot
+            .display_snapshot
+            .buffer_snapshot()
+            .point_to_buffer_offset(visible_range.start)?;
+        let source_buffer = editor.buffer().read(cx).as_singleton()?;
+        (buffer_snapshot.remote_id() == source_buffer.read(cx).remote_id()).then_some(offset.0)
     }
 
     fn sync_preview_to_source_index(
