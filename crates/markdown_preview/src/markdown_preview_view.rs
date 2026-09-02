@@ -2122,6 +2122,7 @@ mod persistence {
 #[cfg(test)]
 mod tests {
     use crate::CloseAndReturnToEditor;
+    use crate::markdown_preview_group::MarkdownPreviewGroup;
     use crate::markdown_preview_view::ImageSource;
     use crate::markdown_preview_view::Resource;
     use crate::markdown_preview_view::resolve_preview_image;
@@ -3632,20 +3633,14 @@ mod tests {
         cx.run_until_parked();
 
         cx.update(|cx| {
-            let preview = first_pane
+            let group = first_pane
                 .read(cx)
                 .active_item()
-                .and_then(|item| item.downcast::<MarkdownPreviewView>())
-                .expect("the preview must open in the pane whose button was clicked");
-            let bound_editor = preview
-                .read(cx)
-                .active_editor
-                .as_ref()
-                .unwrap()
-                .editor
-                .clone();
+                .and_then(|item| item.downcast::<MarkdownPreviewGroup>())
+                .expect("the preview group must open in the pane whose button was clicked");
             assert_eq!(
-                bound_editor, a_editor,
+                group.read(cx).editor(),
+                a_editor,
                 "the preview must be bound to the clicked pane's editor, not the focused editor"
             );
             assert_eq!(
