@@ -216,16 +216,18 @@ jobs:
         run: |
           set -euo pipefail
           brew list --versions llvm >/dev/null 2>&1 || brew install llvm
+          brew list --versions lld >/dev/null 2>&1 || brew install lld
           llvm_prefix="$(brew --prefix llvm)"
+          lld_prefix="$(brew --prefix lld)"
           test -x "$llvm_prefix/bin/clang"
-          test -x "$llvm_prefix/bin/ld64.lld"
+          test -x "$lld_prefix/bin/ld64.lld"
           # LLVM 15 cannot place thunks correctly when the binary has multiple __text sections.
           # Keep Apple clang first on PATH for bindgen; only Rust's target linker uses LLVM clang.
           # Match the existing macOS bundle config to reduce duplicate generic code.
           {
             echo "CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=$llvm_prefix/bin/clang"
             echo "RUSTC_BOOTSTRAP=1"
-            echo "RUSTFLAGS=-Z share-generics=y -C symbol-mangling-version=v0 --cfg tokio_unstable -C link-arg=-fuse-ld=lld"
+            echo "RUSTFLAGS=-Z share-generics=y -C symbol-mangling-version=v0 --cfg tokio_unstable -C link-arg=-fuse-ld=$lld_prefix/bin/ld64.lld"
           } >> "$GITHUB_ENV"
 
       - name: Build Rdg
