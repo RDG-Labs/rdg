@@ -59,7 +59,6 @@ use workspace::{
         Direction, SearchEvent, SearchOptions, SearchToken, SearchableItem, SearchableItemHandle,
     },
 };
-use rdg_actions::{agent::AddSelectionToThread, assistant::InlineAssist};
 
 struct ImeState {
     marked_text: String,
@@ -296,10 +295,10 @@ impl TerminalView {
     }
 
     /// Explicitly override whether workspace-specific context menu actions (e.g. creating or
-    /// closing terminal tabs, inline assist) are shown.
+    /// closing terminal tabs) are shown.
     ///
-    /// This lets hosts that aren't workspace panes (such as the agent panel) hide these
-    /// actions without `terminal_view` needing to know about those hosts. When never called,
+    /// This lets hosts that aren't workspace panes hide these actions without `terminal_view`
+    /// needing to know about those hosts. When never called,
     /// visibility is derived from the terminal's `mode`.
     pub fn set_show_workspace_actions(&mut self, show: bool, cx: &mut Context<Self>) {
         self.show_workspace_actions = Some(show);
@@ -498,15 +497,9 @@ impl TerminalView {
     pub fn deploy_context_menu(
         &mut self,
         position: GpuiPoint<Pixels>,
-        has_selection: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let assistant_enabled = self
-            .workspace
-            .upgrade()
-            .and_then(|workspace| workspace.read(cx).panel::<TerminalPanel>(cx))
-            .is_some_and(|terminal_panel| terminal_panel.read(cx).assistant_enabled());
         let context_menu = ContextMenu::build(window, cx, |menu, _, _| {
             menu.context(self.focus_handle.clone())
                 .when(self.shows_workspace_actions(), |menu| {
@@ -525,16 +518,6 @@ impl TerminalView {
                 .when(
                     !matches!(self.mode, TerminalMode::Embedded { .. }),
                     |menu| menu.action("Clear", Box::new(Clear)),
-                )
-                .when(
-                    assistant_enabled && !matches!(self.mode, TerminalMode::Embedded { .. }),
-                    |menu| {
-                        menu.separator()
-                            .action("Inline Assist", Box::new(InlineAssist::default()))
-                            .when(has_selection && self.shows_workspace_actions(), |menu| {
-                                menu.action("Add to Agent Thread", Box::new(AddSelectionToThread))
-                            })
-                    },
                 )
                 .when(self.shows_workspace_actions(), |menu| {
                     menu.separator().action(
@@ -808,7 +791,7 @@ impl TerminalView {
     }
 
     pub fn should_show_cursor(&self, focused: bool, cx: &mut Context<Self>) -> bool {
-        // Hide cursor when in embedded mode and not focused (read-only output like Agent panel)
+        // Hide cursor when an embedded terminal is unfocused and read-only.
         if let TerminalMode::Embedded { .. } = &self.mode {
             if !focused {
                 return false;
@@ -1353,15 +1336,7 @@ impl Render for TerminalView {
                                 terminal.select_word_at_event_position(event);
                             });
                         }
-                        let has_selection = !had_selection
-                            || this
-                                .terminal
-                                .read(cx)
-                                .last_content
-                                .selection_text
-                                .as_ref()
-                                .is_some_and(|text| !text.is_empty());
-                        this.deploy_context_menu(event.position, has_selection, window, cx);
+                        this.deploy_context_menu(event.position, window, cx);
                         cx.notify();
                     }
                 }),

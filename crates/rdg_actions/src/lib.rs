@@ -566,7 +566,7 @@ pub mod settings_profile_selector {
 }
 
 pub mod agent {
-    use gpui::{Action, SharedString, actions};
+    use gpui::{Action, actions};
     use schemars::JsonSchema;
     use serde::Deserialize;
 
@@ -608,17 +608,6 @@ pub mod agent {
     pub struct SelectAgent {
         /// The id of the agent to select.
         pub agent: String,
-    }
-
-    /// Opens a new agent thread with the provided branch diff for review.
-    #[derive(Clone, PartialEq, Deserialize, JsonSchema, Action)]
-    #[action(namespace = agent)]
-    #[serde(deny_unknown_fields)]
-    pub struct ReviewBranchDiff {
-        /// The full text of the diff to review.
-        pub diff_text: SharedString,
-        /// The base ref that the diff was computed against (e.g. "main").
-        pub base_ref: SharedString,
     }
 
     /// A single merge conflict region extracted from a file.

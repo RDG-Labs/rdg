@@ -45,6 +45,7 @@ pub struct Telemetry {
 
 struct TelemetryState {
     settings: TelemetrySettings,
+    reporting_disabled: bool,
     system_id: Option<Arc<str>>,       // Per system
     installation_id: Option<Arc<str>>, // Per app installation (different for dev, nightly, preview, and stable)
     session_id: Option<String>,        // Per app launch
@@ -190,6 +191,7 @@ impl Telemetry {
     ) -> Arc<Self> {
         let state = Arc::new(Mutex::new(TelemetryState {
             settings: *TelemetrySettings::get_global(cx),
+            reporting_disabled: false,
             architecture: env::consts::ARCH,
             release_channel: ReleaseChannel::try_global(cx),
             system_id: None,
@@ -216,8 +218,15 @@ impl Telemetry {
             let os_version = os_version();
             state.lock().os_version = Some(os_version);
             async move {
+                if state.lock().reporting_disabled {
+                    return;
+                }
+
                 if let Some(tempfile) = File::create(Self::log_file_path()).ok() {
-                    state.lock().log_file = Some(tempfile);
+                    let mut state = state.lock();
+                    if !state.reporting_disabled {
+                        state.log_file = Some(tempfile);
+                    }
                 }
             }
         })
@@ -229,6 +238,10 @@ impl Telemetry {
             move |cx| {
                 let mut state = state.lock();
                 state.settings = *TelemetrySettings::get_global(cx);
+                if state.reporting_disabled {
+                    state.settings.metrics = false;
+                    state.settings.diagnostics = false;
+                }
             }
         })
         .detach();
@@ -368,12 +381,24 @@ impl Telemetry {
         state.os_name = os_name();
     }
 
+    pub fn disable_reporting(self: &Arc<Self>) {
+        let mut state = self.state.lock();
+        state.reporting_disabled = true;
+        state.settings.metrics = false;
+        state.settings.diagnostics = false;
+        state.events_queue.clear();
+        state.log_file.take();
+        state.flush_events_task.take();
+    }
+
     pub fn metrics_enabled(self: &Arc<Self>) -> bool {
-        self.state.lock().settings.metrics
+        let state = self.state.lock();
+        !state.reporting_disabled && state.settings.metrics
     }
 
     pub fn diagnostics_enabled(self: &Arc<Self>) -> bool {
-        self.state.lock().settings.diagnostics
+        let state = self.state.lock();
+        !state.reporting_disabled && state.settings.diagnostics
     }
 
     pub fn set_authenticated_user_info(
@@ -383,7 +408,7 @@ impl Telemetry {
     ) {
         let mut state = self.state.lock();
 
-        if !state.settings.metrics {
+        if state.reporting_disabled || !state.settings.metrics {
             return;
         }
 
@@ -568,7 +593,7 @@ impl Telemetry {
         // RUST_LOG=telemetry=trace to debug telemetry events
         log::trace!(target: "telemetry", "{:?}", event);
 
-        if !state.settings.metrics {
+        if state.reporting_disabled || !state.settings.metrics {
             return;
         }
 
@@ -660,6 +685,11 @@ impl Telemetry {
     pub async fn flush_events_inner(self: &Arc<Self>) -> Result<()> {
         let (json_bytes, request_body) = {
             let mut state = self.state.lock();
+            if state.reporting_disabled {
+                state.events_queue.clear();
+                state.flush_events_task.take();
+                return Ok(());
+            }
             state.first_event_date_time = None;
             let events = mem::take(&mut state.events_queue);
             state.flush_events_task.take();
@@ -758,6 +788,7 @@ mod tests {
 
         let (telemetry, first_date_time, event) = cx.update(|cx| {
             let telemetry = Telemetry::new(clock.clone(), http, cx);
+            telemetry.state.lock().settings.metrics = true;
 
             telemetry.state.lock().max_queue_size = 4;
             telemetry.start(system_id, installation_id, session_id, cx);
@@ -835,6 +866,7 @@ mod tests {
 
         cx.update(|cx| {
             let telemetry = Telemetry::new(clock.clone(), http, cx);
+            telemetry.state.lock().settings.metrics = true;
             telemetry.state.lock().max_queue_size = 4;
             telemetry.start(system_id, installation_id, session_id, cx);
 
@@ -881,6 +913,7 @@ mod tests {
 
         let telemetry = cx.update(|cx| {
             let telemetry = Telemetry::new(clock.clone(), http, cx);
+            telemetry.state.lock().settings.metrics = true;
             telemetry.start(
                 Some("system_id".to_string()),
                 Some("installation_id".to_string()),

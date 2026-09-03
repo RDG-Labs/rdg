@@ -2,7 +2,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod rdg;
-mod reliability;
 
 // Ensure the binary name stays in sync with APP_NAME so that the paths used
 // at runtime (data dir, config dir, etc.) match what the binary is called.
@@ -510,6 +509,7 @@ fn main() {
         let extension_host_proxy = ExtensionHostProxy::global(cx);
 
         let client = Client::production(cx);
+        client.telemetry().disable_reporting();
         cx.set_http_client(client.http_client());
         let mut languages = LanguageRegistry::new(cx.background_executor().clone());
         languages.set_language_server_download_dir(paths::languages_dir().clone());
@@ -580,34 +580,6 @@ fn main() {
 
         let session = cx.foreground_executor().block_on(session);
 
-        // Telemetry and crash-report account attribution are intentionally disabled in Rdg.
-        // Keep this wiring visible until the telemetry subsystem is removed in a dedicated change.
-        // let telemetry = client.telemetry();
-        // telemetry.start(
-        //     system_id.as_ref().map(|id| id.to_string()),
-        //     installation_id.as_ref().map(|id| id.to_string()),
-        //     session.id().to_owned(),
-        //     cx,
-        // );
-        // cx.subscribe(&user_store, {
-        //     let telemetry = telemetry.clone();
-        //     move |_, evt: &client::user::Event, cx| match evt {
-        //         client::user::Event::PrivateUserInfoUpdated => {
-        //             if let Some(crash_client) = cx.try_global::<CrashHandler>() {
-        //                 crashes::set_user_info(
-        //                     &crash_client.0,
-        //                     crashes::UserInfo {
-        //                         metrics_id: telemetry.metrics_id().map(|s| s.to_string()),
-        //                         is_staff: telemetry.is_staff(),
-        //                     },
-        //                 );
-        //             }
-        //         }
-        //         _ => {}
-        //     }
-        // })
-        // .detach();
-
         let app_session = cx.new(|cx| AppSession::new(session, cx));
 
         let app_state = Arc::new(AppState {
@@ -625,7 +597,6 @@ fn main() {
         auto_update::init(client.clone(), cx);
         dap_adapters::init(cx);
         auto_update_ui::init(cx);
-        reliability::init(client.clone(), app_state.workspace_store.clone(), cx);
         extension_host::init(
             extension_host_proxy.clone(),
             app_state.fs.clone(),
@@ -753,19 +724,6 @@ fn main() {
             }
         })
         .detach();
-        // Startup telemetry is disabled in Rdg.
-        // telemetry::event!(
-        //     "Settings Changed",
-        //     setting = "theme",
-        //     value = cx.theme().name.to_string()
-        // );
-        // telemetry::event!(
-        //     "Settings Changed",
-        //     setting = "keymap",
-        //     value = BaseKeymap::get_global(cx).to_string()
-        // );
-        // telemetry.flush_events().detach();
-
         let fs = app_state.fs.clone();
         load_user_themes_in_background(fs.clone(), cx);
         watch_themes(fs.clone(), cx);

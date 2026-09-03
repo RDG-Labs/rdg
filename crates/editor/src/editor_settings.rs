@@ -233,7 +233,7 @@ impl Settings for EditorSettings {
                 breadcrumbs: toolbar.breadcrumbs.unwrap(),
                 quick_actions: toolbar.quick_actions.unwrap(),
                 selections_menu: toolbar.selections_menu.unwrap(),
-                agent_review: toolbar.agent_review.unwrap(),
+                agent_review: toolbar.agent_review.unwrap_or(false),
                 code_actions: toolbar.code_actions.unwrap(),
             },
             scrollbar: Scrollbar {

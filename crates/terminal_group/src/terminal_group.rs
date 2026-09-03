@@ -1134,6 +1134,7 @@ impl TerminalGroup {
             cx.background_executor()
                 .timer(std::time::Duration::from_millis(500))
                 .await;
+            let mut failed = HashSet::new();
 
             loop {
                 let next = this
@@ -1144,6 +1145,7 @@ impl TerminalGroup {
                             .find(|pane| {
                                 pane.read(cx).items_len() == 0
                                     && !this.spawning.contains(&pane.entity_id())
+                                    && !failed.contains(&pane.entity_id())
                             })
                             .cloned()
                     })
@@ -1153,6 +1155,7 @@ impl TerminalGroup {
                 let Some(pane) = next else {
                     break;
                 };
+                let pane_id = pane.entity_id();
 
                 let task = this.update_in(cx, |this, window, cx| {
                     this.spawn_terminal_into(pane, root.clone(), window, cx)
@@ -1161,10 +1164,13 @@ impl TerminalGroup {
                     Ok(task) => {
                         if let Err(error) = task.await {
                             log::error!("failed to start a restored terminal: {error:#}");
-                            break;
+                            failed.insert(pane_id);
                         }
                     }
-                    Err(_) => break,
+                    Err(error) => {
+                        log::error!("failed to schedule a restored terminal: {error:#}");
+                        failed.insert(pane_id);
+                    }
                 }
             }
         })
@@ -1426,7 +1432,7 @@ impl Render for TerminalGroup {
                 this.swap_in_direction(SplitDirection::Down, window, cx)
             }))
             .on_action(cx.listener(|this, _: &Equalize, _window, cx| this.equalize(cx)))
-            // Escape cancels an in-flight drag. Zed's terminal binds bare escape
+            // Escape cancels an in-flight drag. The terminal binds bare escape
             // to SendKeystroke, so without this a drag could only be ended by
             // dropping it somewhere.
             .on_action(cx.listener(|this, _: &menu::Cancel, window, cx| {
@@ -1472,7 +1478,14 @@ impl Render for TerminalGroup {
                     .border_color(cx.theme().colors().border_focused)
                     .bg(cx.theme().colors().drop_target_background)
             }))
-            .children(magnified.map(|pane| render_magnified(pane, window, cx)))
+            .children(magnified.map(|pane| {
+                render_magnified(
+                    pane,
+                    TerminalWorkspaceSettings::get_global(cx).magnify_size,
+                    window,
+                    cx,
+                )
+            }))
     }
 }
 
@@ -1482,12 +1495,16 @@ impl Render for TerminalGroup {
 /// compositing every terminal behind it.
 fn render_magnified(
     pane: Entity<Pane>,
+    size: f32,
     _window: &mut Window,
     cx: &mut Context<TerminalGroup>,
 ) -> AnyElement {
     div()
         .absolute()
         .inset_0()
+        .flex()
+        .items_center()
+        .justify_center()
         .bg(cx.theme().colors().terminal_background.opacity(0.6))
         .on_mouse_down(
             gpui::MouseButton::Left,
@@ -1498,9 +1515,8 @@ fn render_magnified(
         )
         .child(
             div()
-                .absolute()
-                .inset_0()
-                .m(px(24.))
+                .w(gpui::relative(size))
+                .h(gpui::relative(size))
                 .rounded_md()
                 .overflow_hidden()
                 .border_1()

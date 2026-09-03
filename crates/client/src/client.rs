@@ -545,11 +545,13 @@ pub struct TelemetrySettings {
 
 impl settings::Settings for TelemetrySettings {
     fn from_settings(content: &SettingsContent) -> Self {
-        let telemetry = content.telemetry.as_ref().unwrap();
+        let telemetry = content.telemetry.as_ref();
         Self {
-            diagnostics: telemetry.diagnostics.unwrap(),
-            metrics: telemetry.metrics.unwrap(),
-            anthropic_retention: telemetry.anthropic_retention.unwrap(),
+            diagnostics: telemetry.and_then(|settings| settings.diagnostics).unwrap_or(false),
+            metrics: telemetry.and_then(|settings| settings.metrics).unwrap_or(false),
+            anthropic_retention: telemetry
+                .and_then(|settings| settings.anthropic_retention)
+                .unwrap_or(false),
         }
     }
 }

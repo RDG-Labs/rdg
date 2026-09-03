@@ -1,11 +1,11 @@
 ---
-title: Built-in Terminal - Zed
-description: Zed's integrated terminal with multiple instances, custom shells, and deep editor integration.
+title: Terminal Groups - Rdg
+description: Rdg's terminal-first workspace for running multiple shells and coding agents alongside the editor.
 ---
 
 # Terminal
 
-Zed includes a built-in terminal emulator that supports multiple terminal instances, custom shells, and deep integration with the editor.
+Rdg treats terminals as first-class workspace items. Use terminal groups to tile multiple shells and coding agents alongside the editor.
 
 ## Opening Terminals
 
@@ -14,22 +14,21 @@ Zed includes a built-in terminal emulator that supports multiple terminal instan
 | Open terminal group   | `` Ctrl+` `` | `` Ctrl+` ``  |
 | Open new terminal     | `Ctrl+~`     | `Ctrl+~`      |
 
-Use {#action terminal_group::New} to open a terminal group as a regular workspace tab. Use {#action workspace::NewTerminal} to open a standard terminal in the active pane.
+Use {#action terminal_group::New} to open a terminal group as a regular workspace tab. Use {#action workspace::NewTerminal} to open a terminal in the active pane.
 
 ### Terminal Groups
 
 A terminal group is a regular workspace tab containing one or more tiled terminals. Create additional groups with `` Ctrl+` `` and split or move between terminals using the terminal-group actions.
-te.
 
 ## Working with Multiple Terminals
 
-Create additional terminals with `Cmd+N` (macOS) or `Ctrl+N` (Linux/Windows) while focused in the terminal panel. Each terminal appears as a tab in the panel.
+Create additional terminals with the `+` button in a tile header or split a focused tile. Each terminal gets its own tile and can run an independent shell or coding agent.
 
-Split terminals horizontally with `Cmd+D` (macOS) or `Ctrl+Shift+5` (Linux/Windows).
+Use the arrow or `h`/`j`/`k`/`l` bindings to move focus between tiles. Use `Ctrl+Tab` to cycle through tiles, `Ctrl+W` (`Cmd+W` on macOS) to close the focused tile, and `Ctrl+Shift+0` (`Cmd+Shift+0` on macOS) to equalize the layout.
 
 ## Configuring the Shell
 
-By default, Zed uses your system's default shell (from `/etc/passwd` on Unix systems). To use a different shell:
+By default, Rdg uses your system's default shell (from `/etc/passwd` on Unix systems). To use a different shell:
 
 ```json [settings]
 {
@@ -84,7 +83,7 @@ Add environment variables to all terminal sessions:
 {
   "terminal": {
     "env": {
-      "EDITOR": "zed --wait",
+      "EDITOR": "rdg --wait",
       "MY_VAR": "value"
     }
   }
@@ -95,7 +94,7 @@ Add environment variables to all terminal sessions:
 
 ### Python Virtual Environment Detection
 
-Zed can automatically activate Python virtual environments when opening a terminal. By default, it searches for `.env`, `env`, `.venv`, and `venv` directories:
+Rdg can automatically activate Python virtual environments when opening a terminal. By default, it searches for `.env`, `env`, `.venv`, and `venv` directories:
 
 ```json [settings]
 {
@@ -164,7 +163,7 @@ Blinking options: `"off"`, `"terminal_controlled"` (default), `"on"`
 
 ### Minimum Contrast
 
-Zed adjusts terminal colors to maintain readability. The default value of `45` ensures text remains visible. Set to `0` to disable contrast adjustment and use exact theme colors:
+Rdg adjusts terminal colors to maintain readability. The default value of `45` ensures text remains visible. Set to `0` to disable contrast adjustment and use exact theme colors:
 
 ```json [settings]
 {
@@ -271,7 +270,7 @@ When enabled, mouse scroll events are converted to arrow key presses in applicat
 
 ## Path Hyperlinks
 
-Zed detects file paths in terminal output and makes them clickable. `Cmd+Click` (macOS) or `Ctrl+Click` (Linux/Windows) opens the file in Zed, jumping to the line number if one is detected.
+Rdg detects file paths in terminal output and makes them clickable. `Cmd+Click` (macOS) or `Ctrl+Click` (Linux/Windows) opens the file in Rdg, jumping to the line number if one is detected.
 
 Common formats recognized:
 
@@ -332,7 +331,7 @@ The title can be set by your shell using the escape sequence `\e]2;Title\007`.
 
 ## Integration with Tasks
 
-The terminal integrates with Zed's [task system](./tasks.md). When you run a task, it executes in the terminal. Rerun the last task from a terminal with:
+The terminal integrates with Rdg's [task system](./tasks.md). When you run a task, it executes in the terminal. Rerun the last task from a terminal with:
 
 - macOS: `Cmd+Alt+R`
 - Linux/Windows: `Ctrl+Shift+R` or `Alt+T`
@@ -366,6 +365,6 @@ For the complete list of terminal settings, see the [Terminal section in All Set
 
 ## What's Next
 
-- [Tasks](./tasks.md) — Run commands and scripts from Zed
+- [Tasks](./tasks.md) — Run commands and scripts from Rdg
 - [REPL](./repl.md) — Interactive code execution
-- [CLI Reference](./reference/cli.md) — Command-line interface for opening files in Zed
+- [CLI Reference](./reference/cli.md) — Command-line interface for opening files in Rdg
