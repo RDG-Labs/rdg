@@ -30,10 +30,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew list --versions llvm@15 >/dev/null 2>&1 || brew install llvm@15
-          llvm_prefix="$(brew --prefix llvm@15)"
+          brew list --versions llvm >/dev/null 2>&1 || brew install llvm
+          llvm_prefix="$(brew --prefix llvm)"
           test -x "$llvm_prefix/bin/clang"
           test -x "$llvm_prefix/bin/ld64.lld"
+          # LLVM 15 cannot place thunks correctly when the binary has multiple __text sections.
           # Keep Apple clang first on PATH for bindgen; only Rust's target linker uses LLVM clang.
           # Match the existing macOS bundle config to reduce duplicate generic code.
           {
