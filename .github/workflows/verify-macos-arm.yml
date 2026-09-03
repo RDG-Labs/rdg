@@ -34,7 +34,7 @@ jobs:
           llvm_prefix="$(brew --prefix llvm@15)"
           test -x "$llvm_prefix/bin/clang"
           test -x "$llvm_prefix/bin/ld64.lld"
-          echo "$llvm_prefix/bin" >> "$GITHUB_PATH"
+          # Keep Apple clang first on PATH for bindgen; only Rust's target linker uses LLVM clang.
           echo "CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=$llvm_prefix/bin/clang" >> "$GITHUB_ENV"
           echo "RUSTFLAGS=-C symbol-mangling-version=v0 --cfg tokio_unstable -C link-arg=-fuse-ld=lld" >> "$GITHUB_ENV"
 
