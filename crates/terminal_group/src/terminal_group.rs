@@ -2489,8 +2489,19 @@ impl Render for TerminalGroup {
             .child(
                 div()
                     .absolute()
-                    .top_2()
+                    .bottom_2()
                     .right_2()
+                    .p_1()
+                    .rounded_sm()
+                    .bg(ui::glass_elevated_color(
+                        cx.theme().colors().tab_bar_background,
+                        cx,
+                    ))
+                    .border_1()
+                    .border_color(ui::glass_border_color(
+                        cx.theme().colors().border,
+                        cx,
+                    ))
                     .child(mission_control),
             )
             .children(empty_launcher)

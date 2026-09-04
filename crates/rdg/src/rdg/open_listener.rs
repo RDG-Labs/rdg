@@ -2095,6 +2095,7 @@ mod tests {
             while let Ok(response) = response_rx.recv() {
                 match response {
                     CliResponse::Ping => {}
+                    CliResponse::Control(_) => {}
                     CliResponse::Stdout { .. } | CliResponse::Stderr { .. } => {}
                     CliResponse::Exit { status } => return Ok(status),
                     CliResponse::PromptOpenBehavior => {

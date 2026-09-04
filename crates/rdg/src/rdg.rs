@@ -1,5 +1,4 @@
 mod app_menus;
-#[cfg(target_os = "macos")]
 mod migrate;
 #[cfg(target_os = "macos")]
 pub(crate) mod move_to_applications;
