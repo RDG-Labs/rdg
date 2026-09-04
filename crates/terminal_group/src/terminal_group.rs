@@ -1132,10 +1132,18 @@ impl TerminalGroup {
             parent_id.map_or(String::new(), |id| format!(" && set RDG_PARENT_WORKER_ID={id}")),
         );
         #[cfg(not(windows))]
-        let prefix = format!(
-            "export RDG_GROUP_ID={group_id} RDG_WORKER_ID={worker_id}{}; ",
-            parent_id.map_or(String::new(), |id| format!(" RDG_PARENT_WORKER_ID={id}")),
-        );
+        let prefix = {
+            let control_command = std::env::current_exe()
+                .ok()
+                .and_then(|path| path.parent().map(|parent| parent.join("cli")))
+                .filter(|path| path.is_file())
+                .map(|path| format!("'{}'", path.to_string_lossy().replace('\'', "'\\''")))
+                .unwrap_or_else(|| "rdg".to_string());
+            format!(
+                "export RDG_GROUP_ID={group_id} RDG_WORKER_ID={worker_id}{} RDG_CONTROL_COMMAND={control_command}; rdg() {{ \"$RDG_CONTROL_COMMAND\" \"$@\"; }}; if [ -n \"$BASH_VERSION\" ]; then export -f rdg; fi; ",
+                parent_id.map_or(String::new(), |id| format!(" RDG_PARENT_WORKER_ID={id}")),
+            )
+        };
         format!("{prefix}{command}")
     }
 
