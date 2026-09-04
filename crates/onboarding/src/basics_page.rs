@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use fs::Fs;
-use gpui::{Action, App, IntoElement};
+use gpui::{Action, App, ClickEvent, IntoElement, Window};
 use project::project_settings::ProjectSettings;
 use settings::{
     BaseKeymap, Settings, WindowBackgroundContent, update_settings_file,
@@ -234,44 +234,54 @@ fn render_theme_section(tab_index: &mut isize, cx: &mut App) -> impl IntoElement
     }
 }
 
-fn render_transparency_switch(tab_index: &mut isize, cx: &mut App) -> impl IntoElement {
-    let transparency_enabled =
-        cx.theme().window_background_appearance() != gpui::WindowBackgroundAppearance::Opaque;
+fn render_window_appearance(tab_index: &mut isize, cx: &mut App) -> impl IntoElement {
+    let selected_index = match cx.theme().window_background_appearance() {
+        gpui::WindowBackgroundAppearance::Opaque => 0,
+        gpui::WindowBackgroundAppearance::Transparent
+        | gpui::WindowBackgroundAppearance::Blurred => 1,
+        gpui::WindowBackgroundAppearance::MicaBackdrop
+        | gpui::WindowBackgroundAppearance::MicaAltBackdrop => 2,
+    };
+    let fs = <dyn Fs>::global(cx);
+    let set_appearance = |appearance| {
+        let fs = fs.clone();
+        move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
+            update_settings_file(fs.clone(), cx, move |settings, _| {
+                settings
+                    .theme
+                    .experimental_theme_overrides
+                    .get_or_insert_default()
+                    .window_background_appearance = Some(appearance);
+            });
+        }
+    };
 
-    SwitchField::new(
-        "onboarding-window-transparency",
-        Some("Glass Window"),
-        Some("Use the native glass material for the window and app chrome".into()),
-        if transparency_enabled {
-            ui::ToggleState::Selected
-        } else {
-            ui::ToggleState::Unselected
-        },
-        {
-            let fs = <dyn Fs>::global(cx);
-            move |&selection, _, cx| {
-                let appearance = match selection {
-                    ToggleState::Selected => WindowBackgroundContent::Blurred,
-                    ToggleState::Unselected => WindowBackgroundContent::Opaque,
-                    ToggleState::Indeterminate => {
-                        return;
-                    }
-                };
-
-                update_settings_file(fs.clone(), cx, move |settings, _| {
-                    settings
-                        .theme
-                        .experimental_theme_overrides
-                        .get_or_insert_default()
-                        .window_background_appearance = Some(appearance);
-                });
-            }
-        },
-    )
-    .tab_index({
-        *tab_index += 1;
-        *tab_index - 1
-    })
+    v_flex()
+        .gap_2()
+        .child(
+            h_flex().justify_between().child(Label::new("Window Appearance")).child(
+                ToggleButtonGroup::single_row(
+                    "onboarding-window-appearance",
+                    [
+                        ToggleButtonSimple::new("Solid", set_appearance(WindowBackgroundContent::Opaque)),
+                        ToggleButtonSimple::new("Glass", set_appearance(WindowBackgroundContent::Blurred)),
+                        ToggleButtonSimple::new(
+                            "Native Material",
+                            set_appearance(WindowBackgroundContent::Native),
+                        ),
+                    ],
+                )
+                .selected_index(selected_index)
+                .style(ui::ToggleButtonGroupStyle::Outlined)
+                .size(ToggleButtonGroupSize::Medium)
+                .auto_width()
+                .tab_index(tab_index),
+            ),
+        )
+        .child(
+            Label::new("Native Material uses the platform backdrop when available.")
+                .color(Color::Muted),
+        )
 }
 
 fn render_base_keymap_section(tab_index: &mut isize, cx: &mut App) -> impl IntoElement {
@@ -488,7 +498,7 @@ pub(crate) fn render_basics_page(cx: &mut App) -> impl IntoElement {
         .id("basics-page")
         .gap_6()
         .child(render_theme_section(&mut tab_index, cx))
-        .child(render_transparency_switch(&mut tab_index, cx))
+        .child(render_window_appearance(&mut tab_index, cx))
         .child(render_base_keymap_section(&mut tab_index, cx))
         .child(render_import_settings_section(&mut tab_index, cx))
         .child(render_vim_mode_switch(&mut tab_index, cx))

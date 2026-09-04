@@ -50,6 +50,16 @@ impl IntoGpui for WindowBackgroundContent {
             WindowBackgroundContent::Opaque => WindowBackgroundAppearance::Opaque,
             WindowBackgroundContent::Transparent => WindowBackgroundAppearance::Transparent,
             WindowBackgroundContent::Blurred => WindowBackgroundAppearance::Blurred,
+            WindowBackgroundContent::Native => {
+                #[cfg(target_os = "windows")]
+                {
+                    WindowBackgroundAppearance::MicaAltBackdrop
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    WindowBackgroundAppearance::Blurred
+                }
+            }
         }
     }
 }

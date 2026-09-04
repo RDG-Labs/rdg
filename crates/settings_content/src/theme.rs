@@ -1367,6 +1367,7 @@ pub enum WindowBackgroundContent {
     Opaque,
     Transparent,
     Blurred,
+    Native,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, MergeFrom, PartialEq)]
