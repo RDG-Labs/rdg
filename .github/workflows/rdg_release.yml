@@ -344,21 +344,108 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  publish_release:
-    name: Publish ${{ needs.validate_tag.outputs.channel }} release
+  publish_linux:
+    name: Publish Linux artifact
     needs:
       - validate_tag
       - build_linux
-      - build_macos
+    if: needs.build_linux.result == 'success'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    concurrency:
+      group: release-publish-${{ needs.validate_tag.outputs.tag }}
+      cancel-in-progress: false
+    env:
+      RELEASE_TAG: ${{ needs.validate_tag.outputs.tag }}
+      RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+    steps:
+      - name: Download Linux artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: rdg-linux-x86_64
+          path: release-assets
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          repo="$GITHUB_REPOSITORY"
+          asset="release-assets/rdg-linux-x86_64.tar.gz"
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            gh release upload "$tag" --repo "$repo" "$asset" --clobber
+          else
+            release_options=(--title "Rdg ${tag#v}" --generate-notes)
+            if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+              release_options+=(--verify-tag)
+            else
+              release_options+=(--target "$GITHUB_SHA")
+            fi
+            [[ "$RELEASE_CHANNEL" == "preview" ]] && release_options+=(--prerelease)
+            gh release create "$tag" --repo "$repo" "$asset" "${release_options[@]}"
+          fi
+
+  publish_windows:
+    name: Publish Windows artifact
+    needs:
+      - validate_tag
       - build_windows
+    if: needs.build_windows.result == 'success'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    concurrency:
+      group: release-publish-${{ needs.validate_tag.outputs.tag }}
+      cancel-in-progress: false
+    env:
+      RELEASE_TAG: ${{ needs.validate_tag.outputs.tag }}
+      RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: rdg-windows-x86_64
+          path: release-assets
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          repo="$GITHUB_REPOSITORY"
+          asset="release-assets/rdg-windows-x86_64.zip"
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            gh release upload "$tag" --repo "$repo" "$asset" --clobber
+          else
+            release_options=(--title "Rdg ${tag#v}" --generate-notes)
+            if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+              release_options+=(--verify-tag)
+            else
+              release_options+=(--target "$GITHUB_SHA")
+            fi
+            [[ "$RELEASE_CHANNEL" == "preview" ]] && release_options+=(--prerelease)
+            gh release create "$tag" --repo "$repo" "$asset" "${release_options[@]}"
+          fi
+
+  publish_macos:
+    name: Sign and publish macOS artifacts
+    needs:
+      - validate_tag
+      - build_macos
+    if: needs.build_macos.result == 'success'
     runs-on: macos-14
     timeout-minutes: 180
     permissions:
       contents: write
+    concurrency:
+      group: release-publish-${{ needs.validate_tag.outputs.tag }}
+      cancel-in-progress: false
     environment:
       name: ${{ needs.validate_tag.outputs.channel == 'stable' && 'production' || 'release-candidate' }}
     env:
-      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
       RELEASE_TAG: ${{ needs.validate_tag.outputs.tag }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
@@ -371,9 +458,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
 
-      - name: Download release artifacts
+      - name: Download macOS artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
+          pattern: rdg-macos-*
           path: artifacts
 
       - name: Sign, notarize, and publish release
@@ -381,15 +469,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-
-          required_secrets=(
-            MACOS_CERTIFICATE
-            MACOS_CERTIFICATE_PASSWORD
-            MACOS_SIGNING_IDENTITY
-            APPLE_NOTARIZATION_KEY
-            APPLE_NOTARIZATION_KEY_ID
-            APPLE_NOTARIZATION_ISSUER_ID
-          )
+          required_secrets=(MACOS_CERTIFICATE MACOS_CERTIFICATE_PASSWORD MACOS_SIGNING_IDENTITY APPLE_NOTARIZATION_KEY APPLE_NOTARIZATION_KEY_ID APPLE_NOTARIZATION_ISSUER_ID)
           for secret_name in "${required_secrets[@]}"; do
             if [[ -z "${!secret_name:-}" ]]; then
               echo "Missing required environment secret: $secret_name" >&2
@@ -398,9 +478,6 @@ jobs:
           done
 
           mkdir -p release-assets macos-apps
-          cp artifacts/rdg-linux-x86_64/rdg-linux-x86_64.tar.gz release-assets/
-          cp artifacts/rdg-windows-x86_64/rdg-windows-x86_64.zip release-assets/
-
           keychain_path="$RUNNER_TEMP/rdg-signing.keychain-db"
           certificate_path="$RUNNER_TEMP/rdg-certificate.p12"
           notary_key_path="$RUNNER_TEMP/rdg-notary-key.p8"
@@ -419,17 +496,13 @@ jobs:
             mkdir -p "$app_root"
             tar -xzf "artifacts/rdg-macos-$arch/rdg-macos-$arch-app.tar.gz" -C "$app_root"
             app_dir="$app_root/Rdg.app"
-
-            codesign --force --timestamp --options runtime \
-              --keychain "$keychain_path" \
+            codesign --force --timestamp --options runtime --keychain "$keychain_path" \
               --entitlements crates/rdg/resources/zed.entitlements \
               --sign "$MACOS_SIGNING_IDENTITY" "$app_dir/Contents/MacOS/Rdg"
-            codesign --force --timestamp --options runtime \
-              --keychain "$keychain_path" \
+            codesign --force --timestamp --options runtime --keychain "$keychain_path" \
               --entitlements crates/rdg/resources/zed.entitlements \
               --sign "$MACOS_SIGNING_IDENTITY" "$app_dir"
             codesign --verify --deep --strict --verbose=2 "$app_dir"
-
             dmg_dir="$RUNNER_TEMP/Rdg-dmg-$arch"
             dmg_path="release-assets/rdg-macos-$arch.dmg"
             mkdir -p "$dmg_dir"
@@ -442,26 +515,19 @@ jobs:
           printf '%s' "$APPLE_NOTARIZATION_KEY" > "$notary_key_path"
           chmod 600 "$notary_key_path"
           for dmg_path in "${dmg_paths[@]}"; do
-            xcrun notarytool submit "$dmg_path" --wait \
-              --key "$notary_key_path" \
-              --key-id "$APPLE_NOTARIZATION_KEY_ID" \
-              --issuer "$APPLE_NOTARIZATION_ISSUER_ID"
+            xcrun notarytool submit "$dmg_path" --wait --key "$notary_key_path" \
+              --key-id "$APPLE_NOTARIZATION_KEY_ID" --issuer "$APPLE_NOTARIZATION_ISSUER_ID"
             xcrun stapler staple "$dmg_path"
             xcrun stapler validate "$dmg_path"
           done
 
           (
             cd release-assets
-            shasum -a 256 \
-              rdg-linux-x86_64.tar.gz \
-              rdg-windows-x86_64.zip \
-              rdg-macos-x86_64.dmg \
-              rdg-macos-aarch64.dmg
+            shasum -a 256 rdg-macos-x86_64.dmg rdg-macos-aarch64.dmg
           ) > release-assets/SHA256SUMS
           assets=(release-assets/*)
           tag="$RELEASE_TAG"
           repo="$GITHUB_REPOSITORY"
-
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
             gh release upload "$tag" --repo "$repo" "${assets[@]}" --clobber
           else
@@ -471,10 +537,7 @@ jobs:
             else
               release_options+=(--target "$GITHUB_SHA")
             fi
-            if [[ "$RELEASE_CHANNEL" == "preview" ]]; then
-              release_options+=(--prerelease)
-            fi
+            [[ "$RELEASE_CHANNEL" == "preview" ]] && release_options+=(--prerelease)
             gh release create "$tag" --repo "$repo" "${assets[@]}" "${release_options[@]}"
           fi
-
           security delete-keychain "$keychain_path"
