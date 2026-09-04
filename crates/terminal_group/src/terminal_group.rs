@@ -235,7 +235,7 @@ impl TerminalGroup {
         group.update(cx, |group, cx| {
             let pane = group.active_pane.clone();
             group
-                .spawn_terminal_into(pane, working_directory, window, cx)
+                .spawn_terminal_into(pane, working_directory, None, window, cx)
                 .detach_and_log_err(cx);
         });
     }
@@ -312,6 +312,7 @@ impl TerminalGroup {
         &mut self,
         pane: Entity<Pane>,
         working_directory: Option<std::path::PathBuf>,
+        init_command: Option<String>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Task<Result<()>> {
@@ -343,6 +344,12 @@ impl TerminalGroup {
                     project.create_terminal_shell(working_directory, cx)
                 })?
                 .await?;
+
+            if let Some(command) = init_command {
+                terminal.update(cx, |terminal, cx| {
+                    terminal.write_init_command_after_startup(format!("{command}\r").into_bytes(), cx);
+                });
+            }
 
             // Read the workspace only once the synchronous update that started
             // this task has finished; an action handler still holds it.
@@ -527,6 +534,17 @@ impl TerminalGroup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.split_pane_with_command(source, direction, None, window, cx);
+    }
+
+    fn split_pane_with_command(
+        &mut self,
+        source: &Entity<Pane>,
+        direction: SplitDirection,
+        init_command: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let source = source.clone();
 
         // The cap is the backstop that holds even when nothing can be measured,
@@ -583,7 +601,7 @@ impl TerminalGroup {
             self.predict_split_sizes(&source, &new_pane, metrics, direction);
         }
         self.set_active_pane(&new_pane, window, cx);
-        self.spawn_terminal_into(new_pane, working_directory, window, cx)
+        self.spawn_terminal_into(new_pane, working_directory, init_command, window, cx)
             .detach_and_log_err(cx);
         cx.notify();
     }
@@ -680,6 +698,22 @@ impl TerminalGroup {
         cx: &mut Context<Self>,
     ) {
         self.split_pane(pane, SplitDirection::Right, window, cx);
+    }
+
+    pub fn spawn_agent_beside(
+        &mut self,
+        pane: &Entity<Pane>,
+        command: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.split_pane_with_command(
+            pane,
+            SplitDirection::Right,
+            Some(command),
+            window,
+            cx,
+        );
     }
 
     /// Places a terminal that arrived from outside into a tile of its own.
@@ -1116,7 +1150,7 @@ impl TerminalGroup {
         // renders no header, so leaving them empty indefinitely would show a
         // wall of blank boxes.
         let root = self.project_root(cx);
-        self.spawn_terminal_into(focused, root.clone(), window, cx)
+        self.spawn_terminal_into(focused, root.clone(), None, window, cx)
             .detach_and_log_err(cx);
         self._deferred_spawns = Some(self.spawn_remaining_tiles(root, window, cx));
         cx.notify();
@@ -1160,7 +1194,7 @@ impl TerminalGroup {
                 let pane_id = pane.entity_id();
 
                 let task = this.update_in(cx, |this, window, cx| {
-                    this.spawn_terminal_into(pane, root.clone(), window, cx)
+                    this.spawn_terminal_into(pane, root.clone(), None, window, cx)
                 });
                 match task {
                     Ok(task) => {
@@ -1325,7 +1359,7 @@ impl TerminalGroup {
             return;
         }
         let root = self.project_root(cx);
-        self.spawn_terminal_into(pane.clone(), root, window, cx)
+        self.spawn_terminal_into(pane.clone(), root, None, window, cx)
             .detach_and_log_err(cx);
     }
 }
@@ -1569,7 +1603,7 @@ mod tests {
                     );
                     group.update(cx, |group, cx| {
                         let tile = group.active_pane.clone();
-                        group.spawn_terminal_into(tile, None, window, cx).detach();
+                        group.spawn_terminal_into(tile, None, None, window, cx).detach();
                     });
                     group
                 })
@@ -1776,7 +1810,7 @@ mod tests {
             .update(cx, |_, window, cx| {
                 group.update(cx, |group, cx| {
                     group
-                        .spawn_terminal_into(tile.clone(), None, window, cx)
+                        .spawn_terminal_into(tile.clone(), None, None, window, cx)
                         .detach();
                 });
             })
@@ -2311,7 +2345,7 @@ mod tests {
             group.update(cx, |group, cx| {
                 let pane = group.new_tile(window, cx);
                 group
-                    .spawn_terminal_into(pane.clone(), None, window, cx)
+                    .spawn_terminal_into(pane.clone(), None, None, window, cx)
                     .detach();
                 pane
             })

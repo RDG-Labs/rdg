@@ -4,10 +4,10 @@ use std::sync::Arc;
 use gpui::{Action as _, AnyElement, Entity, WeakEntity};
 use terminal_view::TerminalView;
 use ui::prelude::*;
-use ui::{IconButton, IconButtonShape, IconName, IconSize, Label, LabelSize, Tooltip};
+use ui::{ContextMenu, IconButton, IconButtonShape, IconName, IconSize, Label, LabelSize, PopoverMenu, Tooltip};
 use workspace::{Pane, Workspace};
 
-use crate::{DraggedTile, TerminalGroup};
+use crate::{DraggedTile, TerminalGroup, installed_agents};
 
 /// Height of a tile header. Charged against the usable area by the split guard,
 /// so the two must agree.
@@ -167,23 +167,51 @@ fn render_tile_header(
                 .truncate(),
         )
         .child(div().flex_1())
-        .child(
-            IconButton::new("split-tile", IconName::Plus)
-                .shape(IconButtonShape::Square)
-                .icon_size(IconSize::XSmall)
-                .tooltip(Tooltip::text("New terminal beside this one"))
-                .on_click({
-                    let group = group.clone();
+        .child({
+            let group = group.clone();
+            let pane_entity = pane_entity.clone();
+            PopoverMenu::new("split-tile")
+                .trigger_with_tooltip(
+                    IconButton::new("split-tile", IconName::Plus)
+                        .shape(IconButtonShape::Square)
+                        .icon_size(IconSize::XSmall),
+                    Tooltip::text("New terminal or coding agent"),
+                )
+                .menu(move |window, cx| {
+                    let group = group.upgrade()?;
+                    let agents = installed_agents();
                     let pane_entity = pane_entity.clone();
-                    move |_, window, cx| {
-                        group
-                            .update(cx, |group, cx| {
-                                group.split_tile(&pane_entity, window, cx);
-                            })
-                            .ok();
-                    }
-                }),
-        )
+                    Some(ContextMenu::build(window, cx, move |menu, window, _| {
+                        let pane_for_terminal = pane_entity.clone();
+                        let group_for_terminal = group.clone();
+                        let mut menu = menu.entry(
+                            "New Terminal",
+                            None,
+                            window.handler_for(&group_for_terminal, move |group, window, cx| {
+                                group.split_tile(&pane_for_terminal, window, cx);
+                            }),
+                        );
+
+                        if !agents.is_empty() {
+                            menu = menu.separator().label("Installed Agents");
+                            for agent in &agents {
+                                let pane = pane_entity.clone();
+                                let group = group.clone();
+                                let command = agent.command.to_owned();
+                                menu = menu.entry(
+                                    agent.name,
+                                    None,
+                                    window.handler_for(&group, move |group, window, cx| {
+                                        group.spawn_agent_beside(&pane, command.clone(), window, cx);
+                                    }),
+                                );
+                            }
+                        }
+
+                        menu
+                    }))
+                })
+        })
         .child(
             IconButton::new("magnify-tile", if magnified {
                 IconName::Minimize
