@@ -389,6 +389,43 @@ fn to_rect(bounds: gpui::Bounds<Pixels>) -> Rect {
 }
 
 /// The axis a pane sits directly in, if any.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(unix)]
+fn control_cli_wrapper() -> Option<(String, String)> {
+    let cli_path = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|parent| parent.join("cli")))
+        .filter(|path| path.is_file())?;
+    let wrapper_directory = std::env::temp_dir().join(format!("rdg-control-{}", std::process::id()));
+    if let Err(error) = std::fs::create_dir_all(&wrapper_directory) {
+        log::error!("failed to create RDG control wrapper directory: {error:#}");
+        return None;
+    }
+    let wrapper_path = wrapper_directory.join("rdg");
+    let wrapper = format!("#!/bin/sh\nexec {} \"$@\"\n", shell_quote(&cli_path.to_string_lossy()));
+    if let Err(error) = std::fs::write(&wrapper_path, wrapper) {
+        log::error!("failed to write RDG control wrapper: {error:#}");
+        return None;
+    }
+    use std::os::unix::fs::PermissionsExt as _;
+    if let Err(error) = std::fs::set_permissions(
+        &wrapper_path,
+        std::fs::Permissions::from_mode(0o755),
+    ) {
+        log::error!("failed to make RDG control wrapper executable: {error:#}");
+        return None;
+    }
+    Some((wrapper_directory.to_string_lossy().into_owned(), cli_path.to_string_lossy().into_owned()))
+}
+
+#[cfg(not(unix))]
+fn control_cli_wrapper() -> Option<(String, String)> {
+    None
+}
+
 fn parent_axis<'a>(member: &'a Member, pane: &Entity<Pane>) -> Option<&'a PaneAxis> {
     let Member::Axis(axis) = member else {
         return None;
@@ -1133,15 +1170,21 @@ impl TerminalGroup {
         );
         #[cfg(not(windows))]
         let prefix = {
-            let control_command = std::env::current_exe()
-                .ok()
-                .and_then(|path| path.parent().map(|parent| parent.join("cli")))
-                .filter(|path| path.is_file())
-                .map(|path| format!("'{}'", path.to_string_lossy().replace('\'', "'\\''")))
-                .unwrap_or_else(|| "rdg".to_string());
+            let (control_directory, control_command) =
+                control_cli_wrapper().unwrap_or_default();
+            let path_prefix = if control_directory.is_empty() {
+                String::new()
+            } else {
+                format!("export PATH={}:$PATH; ", shell_quote(&control_directory))
+            };
             format!(
-                "export RDG_GROUP_ID={group_id} RDG_WORKER_ID={worker_id}{} RDG_CONTROL_COMMAND={control_command}; rdg() {{ \"$RDG_CONTROL_COMMAND\" \"$@\"; }}; if [ -n \"$BASH_VERSION\" ]; then export -f rdg; fi; ",
+                "{path_prefix}export RDG_GROUP_ID={group_id} RDG_WORKER_ID={worker_id}{} RDG_CONTROL_COMMAND={}; rdg() {{ \"$RDG_CONTROL_COMMAND\" \"$@\"; }}; if [ -n \"$BASH_VERSION\" ]; then export -f rdg; fi; ",
                 parent_id.map_or(String::new(), |id| format!(" RDG_PARENT_WORKER_ID={id}")),
+                shell_quote(if control_command.is_empty() {
+                    "rdg"
+                } else {
+                    &control_command
+                }),
             )
         };
         format!("{prefix}{command}")
