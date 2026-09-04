@@ -1288,20 +1288,37 @@ impl TerminalGroup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let Some(metadata) = self.worker_metadata.get(&worker_id).cloned() else {
+        let Some(metadata) = self.worker_metadata.remove(&worker_id) else {
             return false;
         };
-        if !self.control_close(worker_id, window, cx) {
+        let Some(pane) = self
+            .center
+            .panes()
+            .into_iter()
+            .find(|pane| pane.entity_id().as_u64() == worker_id)
+            .cloned()
+        else {
             return false;
-        }
-        self.control_spawn(
-            metadata.parent_id,
-            metadata.parent_id,
-            metadata.command,
-            window,
-            cx,
-        )
-        .is_some()
+        };
+        let parent_id = metadata.parent_id;
+        let command = metadata.command;
+        let close_task = pane.update(cx, |pane, cx| {
+            pane.close_all_items(&Default::default(), window, cx)
+        });
+        cx.emit(WorkerEvent::Closed { worker_id });
+        let group = self.weak_self.clone();
+        window
+            .spawn(cx, async move |cx| {
+                close_task.await?;
+                group
+                    .update_in(cx, |group, window, cx| {
+                        group.control_spawn(parent_id, parent_id, command, window, cx);
+                    })
+                    .map(|_| ())
+            })
+            .detach_and_log_err(cx);
+        cx.notify();
+        true
     }
 
     pub fn control_report(
