@@ -394,7 +394,7 @@ pub fn build_window_options(display_uuid: Option<Uuid>, cx: &mut App) -> WindowO
         // other platforms.
         app_owns_titlebar_drag: true,
         display_id: display.map(|display| display.id()),
-        window_background: cx.theme().window_background_appearance(),
+        window_background: effective_window_background_appearance(cx),
         app_id: Some(app_id.to_owned()),
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
         icon: APP_ICON.as_ref().cloned(),

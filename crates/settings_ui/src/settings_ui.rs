@@ -860,7 +860,7 @@ fn open_settings_editor_with(
                 show: true,
                 is_movable: true,
                 kind: gpui::WindowKind::Normal,
-                window_background: cx.theme().window_background_appearance(),
+                window_background: ui::effective_window_background_appearance(cx),
                 app_id: Some(app_id.to_owned()),
                 window_decorations: Some(window_decorations),
                 window_min_size: Some(gpui::Size {

@@ -1154,7 +1154,7 @@ fn appearance_page() -> SettingsPage {
         ]
     }
 
-    fn cursor_section() -> [SettingsPageItem; 6] {
+    fn cursor_section() -> [SettingsPageItem; 7] {
         [
             SettingsPageItem::SectionHeader("Cursor"),
             SettingsPageItem::SettingItem(SettingItem {
@@ -1222,6 +1222,20 @@ fn appearance_page() -> SettingsPage {
                     pick: |settings_content| settings_content.reduce_motion.as_ref(),
                     write: |settings_content, value, _| {
                         settings_content.reduce_motion = value;
+                    },
+                }),
+                metadata: None,
+                files: USER,
+            }),
+            SettingsPageItem::SettingItem(SettingItem {
+                title: "Reduce Transparency",
+                description: "Render glass and translucent surfaces as opaque for improved contrast.",
+                field: Box::new(SettingField {
+                    organization_override: None,
+                    json_path: Some("reduce_transparency"),
+                    pick: |settings_content| settings_content.reduce_transparency.as_ref(),
+                    write: |settings_content, value, _| {
+                        settings_content.reduce_transparency = value;
                     },
                 }),
                 metadata: None,

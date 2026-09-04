@@ -235,13 +235,22 @@ fn render_theme_section(tab_index: &mut isize, cx: &mut App) -> impl IntoElement
 }
 
 fn render_window_appearance(tab_index: &mut isize, cx: &mut App) -> impl IntoElement {
-    let selected_index = match cx.theme().window_background_appearance() {
-        gpui::WindowBackgroundAppearance::Opaque => 0,
-        gpui::WindowBackgroundAppearance::Transparent
-        | gpui::WindowBackgroundAppearance::Blurred => 1,
-        gpui::WindowBackgroundAppearance::MicaBackdrop
-        | gpui::WindowBackgroundAppearance::MicaAltBackdrop => 2,
-    };
+    let selected_index = ThemeSettings::get_global(cx)
+        .experimental_theme_overrides
+        .as_ref()
+        .and_then(|overrides| overrides.window_background_appearance)
+        .map(|appearance| match appearance {
+            WindowBackgroundContent::Opaque => 0,
+            WindowBackgroundContent::Transparent | WindowBackgroundContent::Blurred => 1,
+            WindowBackgroundContent::Native => 2,
+        })
+        .unwrap_or_else(|| match cx.theme().window_background_appearance() {
+            gpui::WindowBackgroundAppearance::Opaque => 0,
+            gpui::WindowBackgroundAppearance::Transparent
+            | gpui::WindowBackgroundAppearance::Blurred => 1,
+            gpui::WindowBackgroundAppearance::MicaBackdrop
+            | gpui::WindowBackgroundAppearance::MicaAltBackdrop => 2,
+        });
     let fs = <dyn Fs>::global(cx);
     let set_appearance = |appearance| {
         let fs = fs.clone();

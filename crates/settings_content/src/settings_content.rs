@@ -169,6 +169,29 @@ pub enum ReduceMotionMode {
     Off,
 }
 
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Default,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
+    JsonSchema,
+    MergeFrom,
+    strum::VariantArray,
+    strum::VariantNames,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ReduceTransparencyMode {
+    /// Always reduce transparency
+    On,
+    /// Never reduce transparency
+    #[default]
+    Off,
+}
+
 #[with_fallible_options]
 #[derive(Debug, PartialEq, Default, Clone, Serialize, JsonSchema, MergeFrom)]
 pub struct SettingsContent {
@@ -281,6 +304,11 @@ pub struct SettingsContent {
     ///
     /// Default: off
     pub reduce_motion: Option<ReduceMotionMode>,
+
+    /// Whether to reduce translucent and blurred UI surfaces to opaque surfaces.
+    ///
+    /// Default: off
+    pub reduce_transparency: Option<ReduceTransparencyMode>,
 
     /// The URL of the Zed server to connect to.
     pub server_url: Option<String>,
@@ -407,7 +435,8 @@ fallible_options::flattened_deserialize!(SettingsContent {
         git,
         global_lsp_settings, image_viewer, markdown_preview, repl, helix_mode, hide_mouse,
         journal, log, line_indicator_format, language_models, outline_panel, project_panel,
-        node, proxy, reduce_motion, server_url, credentials_url, session, telemetry, terminal,
+        node, proxy, reduce_motion, reduce_transparency, server_url, credentials_url, session,
+        telemetry, terminal,
         terminal_workspace, title_bar, vim_mode, calls, which_key, vim, modeline_lines,
         feature_flags,
         instrumentation,

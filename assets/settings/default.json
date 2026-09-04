@@ -280,6 +280,8 @@
   // 2. Never reduce motion:
   //    "off"
   "reduce_motion": "off",
+  // Whether to reduce translucent and blurred UI surfaces to opaque surfaces.
+  "reduce_transparency": "off",
   // Determines whether the focused panel follows the mouse location.
   "focus_follows_mouse": {
     "enabled": false,
@@ -2070,9 +2072,9 @@
     // - 75: Minimum for body text
     // - 90: Preferred for body text
     //
-    // Most terminal themes have APCA values of 40-70.
-    // A value of 45 preserves colorful themes while ensuring legibility.
-    "minimum_contrast": 45,
+    // Terminal output is body text, so prefer the 75 body-text threshold.
+    // Set to 0 to preserve exact theme/application colors.
+    "minimum_contrast": 75,
     // Regexes used to identify paths for hyperlink navigation. Supports optional named capture
     // groups `path`, `line`, `column`, and `link`. If none of these are present, the entire match
     // is the hyperlink target. If `path` is present, it is the hyperlink target, along with `line`

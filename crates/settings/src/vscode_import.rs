@@ -212,6 +212,7 @@ impl VsCodeSettings {
                 "off" => Some(ReduceMotionMode::Off),
                 _ => None,
             }),
+            reduce_transparency: None,
             remote: RemoteSettingsContent::default(),
             repl: None,
             server_url: None,

@@ -178,7 +178,7 @@ pub struct TerminalSettingsContent {
     /// - 75: Minimum for body text
     /// - 90: Preferred for body text
     ///
-    /// Default: 45
+    /// Default: 75
     #[serde(serialize_with = "crate::serialize_optional_f32_with_two_decimal_places")]
     pub minimum_contrast: Option<f32>,
     /// Whether to show a badge on the terminal panel icon with the count of open terminals.
