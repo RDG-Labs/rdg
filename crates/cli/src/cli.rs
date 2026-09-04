@@ -82,6 +82,9 @@ pub enum ControlRequest {
         status: String,
         summary: Option<String>,
     },
+    Watch {
+        group_id: Option<u64>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -95,6 +98,15 @@ pub struct ControlWorker {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct ControlEvent {
+    pub kind: String,
+    pub worker_id: u64,
+    pub parent_id: Option<u64>,
+    pub status: Option<String>,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ControlResponse {
     Listed {
         group_id: u64,
@@ -104,6 +116,7 @@ pub enum ControlResponse {
         worker_id: u64,
     },
     Acknowledged,
+    Event(ControlEvent),
     Error {
         message: String,
     },

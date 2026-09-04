@@ -281,6 +281,7 @@ fn parse_control_request(arguments: &[String]) -> Result<cli::ControlRequest> {
                 summary,
             })
         }
+        "watch" => Ok(cli::ControlRequest::Watch { group_id }),
         _ => anyhow::bail!("unknown control operation: {operation}"),
     }
 }

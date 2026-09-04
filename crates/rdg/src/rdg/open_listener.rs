@@ -2,7 +2,8 @@ use crate::handle_open_request;
 use crate::restore_or_create_workspace;
 use anyhow::{Context as _, Result, anyhow};
 use cli::{
-    CliRequest, CliResponse, CliResponseSink, ControlRequest, ControlResponse, ControlWorker,
+    CliRequest, CliResponse, CliResponseSink, ControlEvent, ControlRequest, ControlResponse,
+    ControlWorker,
 };
 use cli::{IpcHandshake, ipc};
 use db::kvp::KeyValueStore;
@@ -20,7 +21,7 @@ use onboarding::FIRST_OPEN;
 use onboarding::show_onboarding_view;
 use recent_projects::navigate_to_positions;
 use settings::Settings;
-use terminal_group::TerminalGroup;
+use terminal_group::{TerminalGroup, WorkerEvent};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread;
@@ -446,6 +447,47 @@ fn find_control_group(
     group_id.is_none().then_some(fallback).flatten()
 }
 
+fn control_list_response(group: &Entity<TerminalGroup>, cx: &App) -> ControlResponse {
+    ControlResponse::Listed {
+        group_id: group.entity_id().as_u64(),
+        workers: group
+            .read(cx)
+            .control_list(cx)
+            .into_iter()
+            .map(|worker| ControlWorker {
+                id: worker.id,
+                parent_id: worker.parent_id,
+                title: worker.title,
+                cwd: worker.cwd,
+                status: worker.status,
+                summary: worker.summary,
+            })
+            .collect(),
+    }
+}
+
+fn control_event_response(event: &WorkerEvent) -> ControlResponse {
+    let (kind, worker_id, parent_id, status, summary) = match event {
+        WorkerEvent::Spawned {
+            worker_id,
+            parent_id,
+        } => ("spawned", *worker_id, *parent_id, Some("starting".to_string()), None),
+        WorkerEvent::Updated {
+            worker_id,
+            status,
+            summary,
+        } => ("updated", *worker_id, None, Some(status.clone()), summary.clone()),
+        WorkerEvent::Closed { worker_id } => ("closed", *worker_id, None, None, None),
+    };
+    ControlResponse::Event(ControlEvent {
+        kind: kind.to_string(),
+        worker_id,
+        parent_id,
+        status,
+        summary,
+    })
+}
+
 fn handle_control_request(request: ControlRequest, cx: &mut AsyncApp) -> ControlResponse {
     let group_id = match &request {
         ControlRequest::List { group_id }
@@ -453,7 +495,8 @@ fn handle_control_request(request: ControlRequest, cx: &mut AsyncApp) -> Control
         | ControlRequest::Send { group_id, .. }
         | ControlRequest::Broadcast { group_id, .. }
         | ControlRequest::Close { group_id, .. }
-        | ControlRequest::Report { group_id, .. } => *group_id,
+        | ControlRequest::Report { group_id, .. }
+        | ControlRequest::Watch { group_id } => *group_id,
     };
     let Some((window, workspace, group)) = cx.update(|cx| find_control_group(cx, group_id)) else {
         return ControlResponse::Error {
@@ -465,22 +508,7 @@ fn handle_control_request(request: ControlRequest, cx: &mut AsyncApp) -> Control
         window
             .update(cx, |_, window, cx| {
                 workspace.update(cx, |_, cx| match request {
-                    ControlRequest::List { .. } => ControlResponse::Listed {
-                        group_id: group.entity_id().as_u64(),
-                        workers: group
-                            .read(cx)
-                            .control_list(cx)
-                            .into_iter()
-                            .map(|worker| ControlWorker {
-                                id: worker.id,
-                                parent_id: worker.parent_id,
-                                title: worker.title,
-                                cwd: worker.cwd,
-                                status: worker.status,
-                                summary: worker.summary,
-                            })
-                            .collect(),
-                    },
+                    ControlRequest::List { .. } => control_list_response(&group, cx),
                     ControlRequest::Spawn {
                         parent_id, command, ..
                     } => match group.update(cx, |group, cx| {
@@ -549,6 +577,9 @@ fn handle_control_request(request: ControlRequest, cx: &mut AsyncApp) -> Control
                             }
                         }
                     }
+                    ControlRequest::Watch { .. } => ControlResponse::Error {
+                        message: "watch requests must use a streaming connection".to_string(),
+                    },
                 })
             })
             .unwrap_or_else(|error| ControlResponse::Error {
@@ -653,6 +684,31 @@ pub async fn handle_cli_connection(
 
                 let status = if open_workspace_result.is_err() { 1 } else { 0 };
                 responses.send(CliResponse::Exit { status }).log_err();
+            }
+            CliRequest::Control {
+                request: ControlRequest::Watch { group_id },
+            } => {
+                let Some((_, _, group)) = cx.update(|cx| find_control_group(cx, group_id)) else {
+                    responses
+                        .send(CliResponse::Control(ControlResponse::Error {
+                            message: "no terminal group found".to_string(),
+                        }))
+                        .log_err();
+                    responses.send(CliResponse::Exit { status: 1 }).log_err();
+                    return;
+                };
+
+                let initial = cx.update(|cx| control_list_response(&group, cx));
+                responses.send(CliResponse::Control(initial)).log_err();
+                let _subscription = cx.update(|cx| {
+                    let responses = responses;
+                    cx.subscribe(&group, move |_, event: &WorkerEvent, _| {
+                        if let Err(error) = responses.send(CliResponse::Control(control_event_response(event))) {
+                            log::debug!("worker event stream closed: {error:#}");
+                        }
+                    })
+                });
+                while requests.next().await.is_some() {}
             }
             CliRequest::Control { request } => {
                 let response = handle_control_request(request, cx);

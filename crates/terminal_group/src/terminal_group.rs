@@ -418,6 +418,22 @@ pub struct WorkerInfo {
     pub summary: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+pub enum WorkerEvent {
+    Spawned {
+        worker_id: u64,
+        parent_id: Option<u64>,
+    },
+    Updated {
+        worker_id: u64,
+        status: String,
+        summary: Option<String>,
+    },
+    Closed {
+        worker_id: u64,
+    },
+}
+
 #[derive(Debug, Clone)]
 struct WorkerMetadata {
     parent_id: Option<u64>,
@@ -1080,14 +1096,19 @@ impl TerminalGroup {
             window,
             cx,
         ) {
+            let worker_id = pane.entity_id().as_u64();
             self.worker_metadata.insert(
-                pane.entity_id().as_u64(),
+                worker_id,
                 WorkerMetadata {
                     parent_id: None,
                     status: "starting".to_string(),
                     summary: None,
                 },
             );
+            cx.emit(WorkerEvent::Spawned {
+                worker_id,
+                parent_id: None,
+            });
         }
     }
 
@@ -1180,6 +1201,10 @@ impl TerminalGroup {
                 summary: None,
             },
         );
+        cx.emit(WorkerEvent::Spawned {
+            worker_id: id,
+            parent_id,
+        });
         Some(id)
     }
 
@@ -1216,6 +1241,7 @@ impl TerminalGroup {
             return false;
         };
         self.worker_metadata.remove(&worker_id);
+        cx.emit(WorkerEvent::Closed { worker_id });
         self.close_tile(&pane, window, cx);
         true
     }
@@ -1230,8 +1256,13 @@ impl TerminalGroup {
         let Some(metadata) = self.worker_metadata.get_mut(&worker_id) else {
             return false;
         };
-        metadata.status = status;
-        metadata.summary = summary;
+        metadata.status = status.clone();
+        metadata.summary = summary.clone();
+        cx.emit(WorkerEvent::Updated {
+            worker_id,
+            status,
+            summary,
+        });
         cx.notify();
         true
     }
@@ -1324,7 +1355,10 @@ impl TerminalGroup {
 
         self.predicted_sizes.remove(&pane.entity_id());
         self.spawning.remove(&pane.entity_id());
-        self.worker_metadata.remove(&pane.entity_id().as_u64());
+        let worker_id = pane.entity_id().as_u64();
+        if self.worker_metadata.remove(&worker_id).is_some() {
+            cx.emit(WorkerEvent::Closed { worker_id });
+        }
         match self.center.remove(pane, cx) {
             Ok(_) => {
                 let next = focus_on_pane
@@ -1436,6 +1470,7 @@ impl Focusable for TerminalGroup {
 }
 
 impl EventEmitter<ItemEvent> for TerminalGroup {}
+impl EventEmitter<WorkerEvent> for TerminalGroup {}
 
 impl TerminalGroup {
     pub(crate) fn worker_status(&self, worker_id: u64) -> Option<String> {
