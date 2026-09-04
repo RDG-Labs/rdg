@@ -1437,6 +1437,14 @@ impl Focusable for TerminalGroup {
 
 impl EventEmitter<ItemEvent> for TerminalGroup {}
 
+impl TerminalGroup {
+    pub(crate) fn worker_status(&self, worker_id: u64) -> Option<String> {
+        self.worker_metadata
+            .get(&worker_id)
+            .map(|metadata| metadata.status.clone())
+    }
+}
+
 impl Item for TerminalGroup {
     type Event = ItemEvent;
 
@@ -1525,14 +1533,23 @@ impl Item for TerminalGroup {
     }
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        if let Some(title) = self.title.clone() {
-            return title;
-        }
-        let count = self.center.panes().len();
-        if count <= 1 {
-            SharedString::from("Terminal")
+        let title = self.title.clone().unwrap_or_else(|| {
+            let count = self.center.panes().len();
+            if count <= 1 {
+                SharedString::from("Terminal")
+            } else {
+                SharedString::from(format!("Terminal ({count})"))
+            }
+        });
+        let active_workers = self
+            .worker_metadata
+            .values()
+            .filter(|metadata| matches!(metadata.status.as_str(), "starting" | "working"))
+            .count();
+        if active_workers == 0 {
+            title
         } else {
-            SharedString::from(format!("Terminal ({count})"))
+            format!("{title} · {active_workers} active").into()
         }
     }
 

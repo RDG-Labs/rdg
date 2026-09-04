@@ -124,8 +124,18 @@ fn render_tile_header(
     let running = terminal_view
         .as_ref()
         .is_some_and(|terminal_view| tile_is_running(terminal_view, cx));
-
     let pane_entity = cx.entity();
+    let worker_status = group
+        .read_with(cx, |group, _| group.worker_status(pane_entity.entity_id().as_u64()))
+        .unwrap_or(None);
+    let status_color = match worker_status.as_deref() {
+        Some("completed") => cx.theme().status().success,
+        Some("failed") => cx.theme().status().error,
+        Some("waiting") => cx.theme().status().warning,
+        Some("starting" | "working") => cx.theme().status().info,
+        _ if running => cx.theme().status().info,
+        _ => cx.theme().colors().text_disabled,
+    };
 
     h_flex()
         .id("tile-header")
@@ -154,11 +164,7 @@ fn render_tile_header(
                 .size(px(6.))
                 .rounded_full()
                 .flex_none()
-                .bg(if running {
-                    cx.theme().status().info
-                } else {
-                    cx.theme().colors().text_disabled
-                }),
+                .bg(status_color),
         )
         .child(
             Label::new(title)
@@ -166,6 +172,13 @@ fn render_tile_header(
                 .color(if focused { Color::Default } else { Color::Muted })
                 .truncate(),
         )
+        .when_some(worker_status.filter(|status| status != "unmanaged"), |this, status| {
+            this.child(
+                Label::new(status)
+                    .size(LabelSize::Small)
+                    .color(Color::Muted),
+            )
+        })
         .child(div().flex_1())
         .child({
             let group = group.clone();
