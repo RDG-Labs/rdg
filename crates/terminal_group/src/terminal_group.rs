@@ -1287,6 +1287,18 @@ impl Item for TerminalGroup {
         true
     }
 
+    fn tab_extra_context_menu_actions(
+        &self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Vec<(SharedString, Box<dyn gpui::Action>)> {
+        if self.detached {
+            vec![("Reattach Group".into(), Box::new(Reattach))]
+        } else {
+            vec![("Detach Group to New Window".into(), Box::new(Detach))]
+        }
+    }
+
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
         if let Some(title) = self.title.clone() {
             return title;
