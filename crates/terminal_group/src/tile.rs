@@ -220,7 +220,7 @@ fn render_tile_header(
                         let pane_for_skill = pane_entity.clone();
                         let group_for_skill = group.clone();
                         menu = menu.entry(
-                            "Install RDG Orchestration Skill",
+                            "Install RDG Orchestration Skill…",
                             None,
                             window.handler_for(&group_for_skill, move |group, window, cx| {
                                 group.spawn_agent_beside(

@@ -43,7 +43,7 @@ use crate::persistence::{
 use crate::tile::{HEADER_HEIGHT, new_tile_pane, tile_terminal};
 
 pub(crate) const ORCHESTRATION_SKILL_INSTALL_COMMAND: &str =
-    "npx skills add RDG-Labs/rdg --skill rdg-orchestration --agent '*' --global --copy -y";
+    "npx skills add RDG-Labs/rdg --skill rdg-orchestration";
 
 actions!(
     terminal_group,
