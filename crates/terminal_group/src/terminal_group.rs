@@ -440,6 +440,7 @@ pub enum WorkerEvent {
 #[derive(Debug, Clone)]
 struct WorkerMetadata {
     parent_id: Option<u64>,
+    command: String,
     status: String,
     summary: Option<String>,
 }
@@ -1091,6 +1092,7 @@ impl TerminalGroup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let worker_command = command.clone();
         if let Some(pane) = self.split_pane_with_command(
             pane,
             SplitDirection::Right,
@@ -1104,6 +1106,7 @@ impl TerminalGroup {
                 worker_id,
                 WorkerMetadata {
                     parent_id: None,
+                    command: worker_command,
                     status: "starting".to_string(),
                     summary: None,
                 },
@@ -1178,6 +1181,7 @@ impl TerminalGroup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<u64> {
+        let worker_command = command.clone();
         let source = source_id
             .and_then(|id| {
                 self.center
@@ -1200,6 +1204,7 @@ impl TerminalGroup {
             id,
             WorkerMetadata {
                 parent_id,
+                command: worker_command,
                 status: "starting".to_string(),
                 summary: None,
             },
@@ -1246,7 +1251,57 @@ impl TerminalGroup {
         self.worker_metadata.remove(&worker_id);
         cx.emit(WorkerEvent::Closed { worker_id });
         self.close_tile(&pane, window, cx);
+        cx.notify();
         true
+    }
+
+    pub fn control_close_subtree(
+        &mut self,
+        root_worker_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let mut pending = vec![root_worker_id];
+        let mut worker_ids = HashSet::<u64>::default();
+        while let Some(worker_id) = pending.pop() {
+            if !worker_ids.insert(worker_id) {
+                continue;
+            }
+            pending.extend(
+                self.worker_metadata
+                    .iter()
+                    .filter(|(_, metadata)| metadata.parent_id == Some(worker_id))
+                    .map(|(worker_id, _)| *worker_id),
+            );
+        }
+
+        let mut closed = false;
+        for worker_id in worker_ids {
+            closed |= self.control_close(worker_id, window, cx);
+        }
+        closed
+    }
+
+    pub fn control_restart(
+        &mut self,
+        worker_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(metadata) = self.worker_metadata.get(&worker_id).cloned() else {
+            return false;
+        };
+        if !self.control_close(worker_id, window, cx) {
+            return false;
+        }
+        self.control_spawn(
+            metadata.parent_id,
+            metadata.parent_id,
+            metadata.command,
+            window,
+            cx,
+        )
+        .is_some()
     }
 
     pub fn control_report(
@@ -2165,7 +2220,7 @@ impl Render for TerminalGroup {
             .menu(move |window, cx| {
                 let group = group.upgrade()?;
                 let worker_tree = worker_tree.clone();
-                Some(ContextMenu::build(window, cx, move |menu, window, _| {
+                Some(ContextMenu::build(window, cx, move |menu, _window: &mut Window, _| {
                     let mut menu = menu.label("Mission Control");
                     for (worker, depth) in &worker_tree {
                         let marker = match worker.status.as_str() {
@@ -2182,15 +2237,45 @@ impl Render for TerminalGroup {
                             worker.title,
                             worker.status
                         );
-                        let group = group.clone();
                         let worker_id = worker.id;
-                        menu = menu.entry(
-                            label,
-                            None,
-                            window.handler_for(&group, move |group, window, cx| {
-                                group.control_focus(worker_id, window, cx);
-                            }),
-                        );
+                        let group_for_focus = group.clone();
+                        let group_for_restart = group.clone();
+                        let group_for_close = group.clone();
+                        let group_for_subtree = group.clone();
+                        menu = menu.submenu(label, move |menu, window, _| {
+                            let group_for_focus = group_for_focus.clone();
+                            let group_for_restart = group_for_restart.clone();
+                            let group_for_close = group_for_close.clone();
+                            let group_for_subtree = group_for_subtree.clone();
+                            let menu = menu.entry(
+                                "Focus Worker",
+                                None,
+                                window.handler_for(&group_for_focus, move |group, window, cx| {
+                                    group.control_focus(worker_id, window, cx);
+                                }),
+                            );
+                            let menu = menu.entry(
+                                "Restart Worker",
+                                None,
+                                window.handler_for(&group_for_restart, move |group, window, cx| {
+                                    group.control_restart(worker_id, window, cx);
+                                }),
+                            );
+                            let menu = menu.entry(
+                                "Close Worker",
+                                None,
+                                window.handler_for(&group_for_close, move |group, window, cx| {
+                                    group.control_close(worker_id, window, cx);
+                                }),
+                            );
+                            menu.entry(
+                                "Close Worker Subtree",
+                                None,
+                                window.handler_for(&group_for_subtree, move |group, window, cx| {
+                                    group.control_close_subtree(worker_id, window, cx);
+                                }),
+                            )
+                        });
                     }
                     menu
                 }))
