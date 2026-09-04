@@ -439,7 +439,7 @@ fn find_control_group(
                         .active_item_as::<TerminalGroup>(cx)
                         .is_some_and(|active| active == group)
                 {
-                    return Some((multi_workspace, workspace.clone(), group));
+                    return Some((multi_workspace, workspace, group));
                 }
             }
         }
