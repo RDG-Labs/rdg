@@ -133,7 +133,11 @@ impl TerminalGroupDb {
             layout: String
         ) -> Result<()> {
             INSERT OR REPLACE INTO terminal_groups(item_id, workspace_id, layout)
-            VALUES (?, ?, ?)
+            SELECT candidate.item_id, candidate.workspace_id, candidate.layout
+            FROM (SELECT ? AS item_id, ? AS workspace_id, ? AS layout) AS candidate
+            WHERE candidate.workspace_id IN (
+                SELECT workspace_id FROM workspaces
+            )
         }
     }
 

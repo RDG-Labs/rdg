@@ -479,12 +479,18 @@ impl TerminalDb {
         );
         let query =
             "INSERT INTO terminals(item_id, workspace_id, working_directory, working_directory_path)
-            VALUES (?1, ?2, ?3, ?4)
+            SELECT candidate.item_id, candidate.workspace_id, candidate.working_directory, candidate.working_directory_path
+            FROM (
+                SELECT ?1 AS item_id, ?2 AS workspace_id, ?3 AS working_directory, ?4 AS working_directory_path
+            ) AS candidate
+            WHERE EXISTS (
+                SELECT 1 FROM workspaces WHERE workspaces.workspace_id = candidate.workspace_id
+            )
             ON CONFLICT DO UPDATE SET
-                item_id = ?1,
-                workspace_id = ?2,
-                working_directory = ?3,
-                working_directory_path = ?4"
+                item_id = excluded.item_id,
+                workspace_id = excluded.workspace_id,
+                working_directory = excluded.working_directory,
+                working_directory_path = excluded.working_directory_path"
         ;
         self.write(move |conn| {
             let mut statement = Statement::prepare(conn, query)?;
@@ -522,7 +528,13 @@ impl TerminalDb {
         );
         self.write(move |conn| {
             let query = "INSERT INTO terminals (item_id, workspace_id, custom_title)
-                VALUES (?1, ?2, ?3)
+                SELECT candidate.item_id, candidate.workspace_id, candidate.custom_title
+                FROM (
+                    SELECT ?1 AS item_id, ?2 AS workspace_id, ?3 AS custom_title
+                ) AS candidate
+                WHERE EXISTS (
+                    SELECT 1 FROM workspaces WHERE workspaces.workspace_id = candidate.workspace_id
+                )
                 ON CONFLICT (workspace_id, item_id) DO UPDATE SET
                     custom_title = excluded.custom_title";
             let mut statement = Statement::prepare(conn, query)?;
