@@ -240,8 +240,8 @@ fn render_transparency_switch(tab_index: &mut isize, cx: &mut App) -> impl IntoE
 
     SwitchField::new(
         "onboarding-window-transparency",
-        Some("Transparent Window"),
-        Some("Use the native translucent window background".into()),
+        Some("Glass Window"),
+        Some("Use the native glass material for the window and app chrome".into()),
         if transparency_enabled {
             ui::ToggleState::Selected
         } else {

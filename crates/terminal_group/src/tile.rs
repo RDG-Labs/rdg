@@ -142,9 +142,13 @@ fn render_tile_header(
         .flex_none()
         .px_2()
         .gap_1p5()
-        .bg(cx.theme().colors().tab_bar_background)
+        .bg(if focused {
+            ui::glass_elevated_color(cx.theme().colors().tab_bar_background, cx)
+        } else {
+            ui::glass_surface_color(cx.theme().colors().tab_bar_background, cx)
+        })
         .border_b_1()
-        .border_color(cx.theme().colors().border)
+        .border_color(ui::glass_border_color(cx.theme().colors().border, cx))
         .child(
             div()
                 .size(px(6.))

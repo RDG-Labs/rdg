@@ -123,6 +123,11 @@ impl RenderOnce for Tab {
                 cx.theme().colors().element_active,
             ),
         };
+        let tab_bg = if self.selected {
+            glass_elevated_color(tab_bg, cx)
+        } else {
+            glass_surface_color(tab_bg, cx)
+        };
 
         let (start_slot, end_slot) = {
             let start_slot = h_flex()
@@ -144,7 +149,7 @@ impl RenderOnce for Tab {
         self.div
             .h(Tab::container_height(cx))
             .bg(tab_bg)
-            .border_color(cx.theme().colors().border)
+            .border_color(glass_border_color(cx.theme().colors().border, cx))
             .map(|this| match self.position {
                 TabPosition::First => {
                     if self.selected {

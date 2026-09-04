@@ -1336,8 +1336,8 @@ impl Render for Dock {
                 .track_focus(&self.focus_handle(cx))
                 .focus_follows_mouse(self.focus_follows_mouse, cx)
                 .flex()
-                .bg(cx.theme().colors().panel_background)
-                .border_color(cx.theme().colors().border)
+                .bg(ui::glass_surface_color(cx.theme().colors().panel_background, cx))
+                .border_color(ui::glass_border_color(cx.theme().colors().border, cx))
                 .overflow_hidden()
                 .map(|this| match self.position().axis() {
                     // Width and height are always set on the workspace wrapper in

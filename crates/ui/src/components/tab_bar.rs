@@ -98,7 +98,7 @@ impl RenderOnce for TabBar {
             .flex_none()
             .w_full()
             .h(Tab::container_height(cx))
-            .bg(cx.theme().colors().tab_bar_background)
+            .bg(glass_surface_color(cx.theme().colors().tab_bar_background, cx))
             .when(!self.start_children.is_empty(), |this| {
                 this.child(
                     h_flex()
@@ -107,7 +107,7 @@ impl RenderOnce for TabBar {
                         .px(DynamicSpacing::Base06.rems(cx))
                         .border_b_1()
                         .border_r_1()
-                        .border_color(cx.theme().colors().border)
+                        .border_color(glass_border_color(cx.theme().colors().border, cx))
                         .children(self.start_children),
                 )
             })

@@ -15,7 +15,8 @@ pub use ui_macros::RegisterComponent;
 pub use crate::DynamicSpacing;
 pub use crate::animation::{AnimationDirection, AnimationDuration, DefaultAnimations};
 pub use crate::styles::{
-    PlatformStyle, Severity, StyledTypography, TextSize, rems_from_px, vh, vw,
+    PlatformStyle, Severity, StyledTypography, TextSize, glass_border_color,
+    glass_elevated_color, glass_surface_color, rems_from_px, vh, vw,
     window_background_color,
 };
 pub use crate::traits::clickable::*;
