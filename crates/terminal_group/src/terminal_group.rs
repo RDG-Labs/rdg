@@ -541,8 +541,7 @@ impl TerminalGroup {
         cx: &mut Context<Workspace>,
     ) {
         let group = Self::new(workspace, window, cx);
-        workspace.add_item_to_active_pane(Box::new(group.clone()), None, true, window, cx);
-
+        workspace.add_item_to_active_pane(Box::new(group), None, true, window, cx);
     }
 
     pub fn new(
@@ -1021,7 +1020,7 @@ impl TerminalGroup {
         if pane.read(cx).items_len() > 0 || self.spawning.contains(&pane.entity_id()) {
             return;
         }
-        let init_command = command.clone().map(|command| {
+        let init_command = command.map(|command| {
             let worker_id = pane.entity_id().as_u64();
             let shell_command = command.clone();
             self.worker_metadata.insert(
