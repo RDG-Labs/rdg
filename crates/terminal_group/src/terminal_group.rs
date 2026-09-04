@@ -42,6 +42,9 @@ use crate::persistence::{
 };
 use crate::tile::{HEADER_HEIGHT, new_tile_pane, tile_terminal};
 
+pub(crate) const ORCHESTRATION_SKILL_INSTALL_COMMAND: &str =
+    "npx skills add RDG-Labs/rdg --skill rdg-orchestration --agent '*' --global --copy -y";
+
 actions!(
     terminal_group,
     [
@@ -518,6 +521,7 @@ pub struct TerminalGroup {
     /// this the tile would get two terminals and immediately split itself.
     spawning: HashSet<gpui::EntityId>,
     worker_metadata: HashMap<u64, WorkerMetadata>,
+    auto_start_empty_tiles: bool,
     /// Where an in-flight tile drag would land. Recomputed as the pointer moves
     /// and cleared when the drag ends, however it ends.
     drop_target: Option<(Entity<Pane>, DropZone)>,
@@ -539,13 +543,6 @@ impl TerminalGroup {
         let group = Self::new(workspace, window, cx);
         workspace.add_item_to_active_pane(Box::new(group.clone()), None, true, window, cx);
 
-        let working_directory = terminal_view::default_working_directory(workspace, cx);
-        group.update(cx, |group, cx| {
-            let pane = group.active_pane.clone();
-            group
-                .spawn_terminal_into(pane, working_directory, None, window, cx)
-                .detach_and_log_err(cx);
-        });
     }
 
     pub fn new(
@@ -591,6 +588,7 @@ impl TerminalGroup {
                 predicted_sizes: HashMap::default(),
                 spawning: HashSet::default(),
                 worker_metadata: HashMap::default(),
+                auto_start_empty_tiles: false,
                 drop_target: None,
                 detached: false,
                 detached_origin: None,
@@ -1011,6 +1009,39 @@ impl TerminalGroup {
     /// `+` belongs to the workspace pane and creates items outside the group.
     pub fn split_tile(&mut self, pane: &Entity<Pane>, window: &mut Window, cx: &mut Context<Self>) {
         self.split_pane(pane, SplitDirection::Right, window, cx);
+    }
+
+    fn start_terminal_in_pane(
+        &mut self,
+        pane: Entity<Pane>,
+        command: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if pane.read(cx).items_len() > 0 || self.spawning.contains(&pane.entity_id()) {
+            return;
+        }
+        let init_command = command.clone().map(|command| {
+            let worker_id = pane.entity_id().as_u64();
+            let shell_command = command.clone();
+            self.worker_metadata.insert(
+                worker_id,
+                WorkerMetadata {
+                    parent_id: None,
+                    command,
+                    status: "starting".to_string(),
+                    summary: None,
+                },
+            );
+            cx.emit(WorkerEvent::Spawned {
+                worker_id,
+                parent_id: None,
+            });
+            self.worker_init_command(&pane, shell_command, None)
+        });
+        let working_directory = self.project_root(cx);
+        self.spawn_terminal_into(pane, working_directory, init_command, window, cx)
+            .detach_and_log_err(cx);
     }
 
     fn prompt_custom_command(
@@ -1572,7 +1603,9 @@ impl TerminalGroup {
                 if self.magnified_pane.is_some() && !self.is_magnified(pane) {
                     self.magnified_pane = Some(pane.downgrade());
                 }
-                self.spawn_if_empty(&pane.clone(), window, cx);
+                if self.auto_start_empty_tiles {
+                    self.spawn_if_empty(pane, window, cx);
+                }
                 cx.notify();
             }
             workspace::pane::Event::Remove { focus_on_pane } => {
@@ -1826,7 +1859,11 @@ impl CustomCommandModal {
         window.defer(cx, move |window, cx| {
             if let Some(group) = group.upgrade() {
                 group.update(cx, |group, cx| {
-                    group.spawn_agent_beside(&pane, command, window, cx);
+                    if pane.read(cx).items_len() == 0 {
+                        group.start_terminal_in_pane(pane, Some(command.clone()), window, cx);
+                    } else {
+                        group.spawn_agent_beside(&pane, command, window, cx);
+                    }
                 });
             }
         });
@@ -2017,6 +2054,7 @@ impl TerminalGroup {
 
         self.active_pane = focused.clone();
         self.magnified_pane = magnified.map(|pane| pane.downgrade());
+        self.auto_start_empty_tiles = true;
 
         // The tile the user lands on starts immediately so the grid is usable
         // at once; the rest follow shortly after (§8.4). A tile with no terminal
@@ -2225,8 +2263,6 @@ impl TerminalGroup {
         cx.notify();
     }
 
-    /// Starts a shell in a tile that has none, which is how restored tiles come
-    /// to life.
     fn spawn_if_empty(&mut self, pane: &Entity<Pane>, window: &mut Window, cx: &mut Context<Self>) {
         if pane.read(cx).items_len() > 0 || self.spawning.contains(&pane.entity_id()) {
             return;
@@ -2286,6 +2322,10 @@ impl Render for TerminalGroup {
                 .into_any_element()
         });
 
+        let empty_launcher = (self.center.panes().len() == 1
+            && self.center.first_pane().read(cx).items_len() == 0
+            && self.spawning.is_empty())
+        .then(|| render_empty_launcher(self.center.first_pane(), window, cx));
         let worker_tree = self.control_tree(cx);
         let group = cx.entity().downgrade();
         let mission_control = PopoverMenu::new("mission-control")
@@ -2453,6 +2493,7 @@ impl Render for TerminalGroup {
                     .right_2()
                     .child(mission_control),
             )
+            .children(empty_launcher)
             .children(drop_preview.map(|rect| {
                 // A filled region rather than an insertion line: it shows the
                 // shape the tile will actually occupy.
@@ -2476,6 +2517,73 @@ impl Render for TerminalGroup {
                 )
             }))
     }
+}
+
+fn render_empty_launcher(
+    pane: Entity<Pane>,
+    _window: &mut Window,
+    cx: &mut Context<TerminalGroup>,
+) -> AnyElement {
+    let mut actions = h_flex()
+        .gap_2()
+        .justify_center()
+        .flex_wrap()
+        .child(
+            Button::new("empty-new-terminal", "New Terminal")
+                .size(ButtonSize::Compact)
+                .style(ButtonStyle::Filled)
+                .on_click(cx.listener({
+                    let pane = pane.clone();
+                    move |group, _, window, cx| {
+                        group.start_terminal_in_pane(pane.clone(), None, window, cx);
+                    }
+                })),
+        )
+        .child(
+            Button::new("empty-custom-command", "Custom Command…")
+                .size(ButtonSize::Compact)
+                .on_click(cx.listener({
+                    let pane = pane.clone();
+                    move |group, _, window, cx| {
+                        group.prompt_custom_command(pane.clone(), window, cx);
+                    }
+                })),
+        );
+
+    for agent in installed_agents() {
+        let command = agent.command.to_owned();
+        actions = actions.child(
+            Button::new(format!("empty-agent-{}", agent.command), agent.name)
+                .size(ButtonSize::Compact)
+                .on_click(cx.listener({
+                    let pane = pane.clone();
+                    let command = command.clone();
+                    move |group, _, window, cx| {
+                        group.start_terminal_in_pane(
+                            pane.clone(),
+                            Some(command.clone()),
+                            window,
+                            cx,
+                        );
+                    }
+                })),
+        );
+    }
+
+    v_flex()
+        .absolute()
+        .inset_0()
+        .items_center()
+        .justify_center()
+        .gap_3()
+        .bg(cx.theme().colors().terminal_background)
+        .child(Label::new("Start a terminal group").size(LabelSize::Large))
+        .child(
+            Label::new("Launch a shell or external coding CLI in this tile.")
+                .color(Color::Muted),
+        )
+        .child(actions)
+        .into_any_element()
 }
 
 /// The magnified tile floats above a dimmed grid rather than replacing it, so
