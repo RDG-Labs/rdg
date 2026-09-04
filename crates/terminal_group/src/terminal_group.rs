@@ -5,11 +5,13 @@
 //! holding exactly one terminal and rendering a slim header in place of a tab
 //! strip, so the grid reads as a wall of terminals rather than a nest of tabs.
 
+mod agent_discovery;
 mod drag;
 mod persistence;
 mod split_guard;
 mod tile;
 
+pub use agent_discovery::{InstalledAgent, installed_agents};
 pub use drag::{DropZone, Rect, preview_rect, zone_at};
 pub use split_guard::{SplitGuard, SplitOutcome, TileMetrics, TileMinimum, resolve_split};
 
