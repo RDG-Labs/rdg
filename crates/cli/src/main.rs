@@ -106,6 +106,9 @@ struct Args {
     /// Run zed in the foreground (useful for debugging)
     #[arg(long)]
     foreground: bool,
+    /// Send a terminal-group control request to the running RDG instance.
+    #[arg(long, hide = true)]
+    control: bool,
     /// Custom path to Zed.app or the zed binary
     #[arg(long)]
     zed: Option<PathBuf>,
@@ -207,6 +210,79 @@ fn parse_path_with_position(argument_str: &str) -> anyhow::Result<String> {
 /// regular `zed path:line:column` arguments are handled).
 fn diff_path_exists(diff_path: &str) -> bool {
     Path::new(diff_path).exists() || PathWithPosition::parse_str(diff_path).path.exists()
+}
+
+fn control_id(name: &str) -> Result<u64> {
+    name.parse()
+        .with_context(|| format!("invalid worker id: {name}"))
+}
+
+fn control_context_id(name: &str) -> Option<u64> {
+    env::var(name).ok().and_then(|id| id.parse().ok())
+}
+
+fn parse_control_request(arguments: &[String]) -> Result<cli::ControlRequest> {
+    let Some((operation, arguments)) = arguments.split_first() else {
+        anyhow::bail!("--control requires an operation")
+    };
+    let group_id = control_context_id("RDG_GROUP_ID");
+    let parent_id = control_context_id("RDG_WORKER_ID");
+    match operation.as_str() {
+        "list" => Ok(cli::ControlRequest::List { group_id }),
+        "spawn" => {
+            let command = arguments.join(" ");
+            anyhow::ensure!(!command.trim().is_empty(), "spawn requires a command");
+            Ok(cli::ControlRequest::Spawn {
+                group_id,
+                parent_id,
+                command,
+            })
+        }
+        "send" => {
+            let worker_id = control_id(arguments.first().context("send requires a worker id")?)?;
+            let text = arguments[1..].join(" ");
+            anyhow::ensure!(!text.is_empty(), "send requires text");
+            Ok(cli::ControlRequest::Send {
+                group_id,
+                worker_id,
+                text: format!("{text}\r"),
+            })
+        }
+        "broadcast" => {
+            let workers = arguments.first().context("broadcast requires worker ids")?;
+            let worker_ids = if workers == "all" {
+                Vec::new()
+            } else {
+                workers
+                    .split(',')
+                    .map(control_id)
+                    .collect::<Result<Vec<_>>>()?
+            };
+            let text = arguments[1..].join(" ");
+            anyhow::ensure!(!text.is_empty(), "broadcast requires text");
+            Ok(cli::ControlRequest::Broadcast {
+                group_id,
+                worker_ids,
+                text: format!("{text}\r"),
+            })
+        }
+        "close" => Ok(cli::ControlRequest::Close {
+            group_id,
+            worker_id: control_id(arguments.first().context("close requires a worker id")?)?,
+        }),
+        "report" => {
+            let worker_id = control_id(arguments.first().context("report requires a worker id")?)?;
+            let status = arguments.get(1).context("report requires a status")?.clone();
+            let summary = (!arguments[2..].is_empty()).then(|| arguments[2..].join(" "));
+            Ok(cli::ControlRequest::Report {
+                group_id,
+                worker_id,
+                status,
+                summary,
+            })
+        }
+        _ => anyhow::bail!("unknown control operation: {operation}"),
+    }
 }
 
 fn expand_directory_diff_pairs(
@@ -581,6 +657,11 @@ fn run() -> Result<()> {
         std::process::exit(status.code().unwrap_or(1));
     }
 
+    let control_request = args
+        .control
+        .then(|| parse_control_request(&args.paths_with_position))
+        .transpose()?;
+
     let (server, server_name) =
         IpcOneShotServer::<IpcHandshake>::new().context("Handshake before Zed spawn")?;
     let url = format!("zed-cli://{server_name}");
@@ -645,6 +726,9 @@ fn run() -> Result<()> {
         .any(|pair| Path::new(&pair[0]).is_dir() || Path::new(&pair[1]).is_dir());
 
     for path in args.diff.chunks(2) {
+        if control_request.is_some() {
+            break;
+        }
         let left = parse_path_with_position(&path[0])?;
         let right = parse_path_with_position(&path[1])?;
         for diff_path in [&left, &right] {
@@ -672,6 +756,9 @@ fn run() -> Result<()> {
     let wsl = None;
 
     for path in args.paths_with_position.iter() {
+        if control_request.is_some() {
+            break;
+        }
         if URL_PREFIX.iter().any(|&prefix| path.starts_with(prefix)) {
             urls.push(path.to_string());
         } else if path == "-" && args.paths_with_position.len() == 1 {
@@ -717,25 +804,32 @@ fn run() -> Result<()> {
                 #[cfg(not(target_os = "windows"))]
                 let wsl = None;
 
-                let open_request = CliRequest::Open {
-                    paths,
-                    urls,
-                    diff_paths,
-                    diff_all: diff_all_mode,
-                    wsl,
-                    wait: args.wait,
-                    open_behavior,
-                    env,
-                    user_data_dir: user_data_dir_for_thread,
-                    dev_container: args.dev_container,
-                    cwd: env::current_dir().ok(),
+                let request = if let Some(control_request) = control_request {
+                    CliRequest::Control {
+                        request: control_request,
+                    }
+                } else {
+                    CliRequest::Open {
+                        paths,
+                        urls,
+                        diff_paths,
+                        diff_all: diff_all_mode,
+                        wsl,
+                        wait: args.wait,
+                        open_behavior,
+                        env,
+                        user_data_dir: user_data_dir_for_thread,
+                        dev_container: args.dev_container,
+                        cwd: env::current_dir().ok(),
+                    }
                 };
 
-                tx.send(open_request)?;
+                tx.send(request)?;
 
                 while let Ok(response) = rx.recv() {
                     match response {
                         CliResponse::Ping => {}
+                        CliResponse::Control(response) => println!("{}", serde_json::to_string(&response)?),
                         CliResponse::Stdout { message } => println!("{message}"),
                         CliResponse::Stderr { message } => eprintln!("{message}"),
                         CliResponse::Exit { status } => {

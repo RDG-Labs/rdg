@@ -1,7 +1,9 @@
 use crate::handle_open_request;
 use crate::restore_or_create_workspace;
 use anyhow::{Context as _, Result, anyhow};
-use cli::{CliRequest, CliResponse, CliResponseSink};
+use cli::{
+    CliRequest, CliResponse, CliResponseSink, ControlRequest, ControlResponse, ControlWorker,
+};
 use cli::{IpcHandshake, ipc};
 use db::kvp::KeyValueStore;
 use editor::Editor;
@@ -13,11 +15,12 @@ use futures::future;
 use futures::{FutureExt, StreamExt};
 use git_ui::multi_diff_view::MultiDiffView;
 use git_ui_core::file_diff_view::FileDiffView;
-use gpui::{App, AsyncApp, Global, TaskExt, WindowHandle};
+use gpui::{App, AsyncApp, Entity, Global, TaskExt, WindowHandle};
 use onboarding::FIRST_OPEN;
 use onboarding::show_onboarding_view;
 use recent_projects::navigate_to_positions;
 use settings::Settings;
+use terminal_group::TerminalGroup;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread;
@@ -28,7 +31,9 @@ use util::debug_panic;
 use util::paths::PathWithPosition;
 use workspace::PathList;
 use workspace::item::ItemHandle;
-use workspace::{AppState, MultiWorkspace, OpenOptions, OpenResult, SerializedWorkspaceLocation};
+use workspace::{
+    AppState, MultiWorkspace, OpenOptions, OpenResult, SerializedWorkspaceLocation, Workspace,
+};
 
 #[derive(Default, Debug)]
 pub struct OpenRequest {
@@ -398,6 +403,160 @@ pub async fn open_paths_with_positions(
     Ok((multi_workspace, items))
 }
 
+fn find_control_group(
+    cx: &mut App,
+    group_id: Option<u64>,
+) -> Option<(WindowHandle<MultiWorkspace>, Entity<Workspace>, Entity<TerminalGroup>)> {
+    let mut fallback = None;
+    for window in cx.windows() {
+        let Some(multi_workspace) = window.downcast::<MultiWorkspace>() else {
+            continue;
+        };
+        let Ok(multi_workspace_state) = multi_workspace.read(cx) else {
+            continue;
+        };
+        let workspaces = multi_workspace_state
+            .workspaces()
+            .cloned()
+            .collect::<Vec<_>>();
+        for workspace in workspaces {
+            let groups = workspace
+                .read(cx)
+                .items_of_type::<TerminalGroup>(cx)
+                .collect::<Vec<_>>();
+            for group in groups {
+                if group_id.is_some_and(|id| group.entity_id().as_u64() == id) {
+                    return Some((multi_workspace, workspace, group));
+                }
+                if fallback.is_none() {
+                    fallback = Some((multi_workspace, workspace.clone(), group.clone()));
+                }
+                if group_id.is_none()
+                    && multi_workspace.is_active(cx) == Some(true)
+                    && workspace
+                        .read(cx)
+                        .active_item_as::<TerminalGroup>(cx)
+                        .is_some_and(|active| active == group)
+                {
+                    return Some((multi_workspace, workspace.clone(), group));
+                }
+            }
+        }
+    }
+    group_id.is_none().then_some(fallback).flatten()
+}
+
+fn handle_control_request(request: ControlRequest, cx: &mut AsyncApp) -> ControlResponse {
+    let group_id = match &request {
+        ControlRequest::List { group_id }
+        | ControlRequest::Spawn { group_id, .. }
+        | ControlRequest::Send { group_id, .. }
+        | ControlRequest::Broadcast { group_id, .. }
+        | ControlRequest::Close { group_id, .. }
+        | ControlRequest::Report { group_id, .. } => *group_id,
+    };
+    let Some((window, workspace, group)) = cx.update(|cx| find_control_group(cx, group_id)) else {
+        return ControlResponse::Error {
+            message: "no terminal group found".to_string(),
+        };
+    };
+
+    cx.update(|cx| {
+        window
+            .update(cx, |_, window, cx| {
+                workspace.update(cx, |_, cx| match request {
+                    ControlRequest::List { .. } => ControlResponse::Listed {
+                        group_id: group.entity_id().as_u64(),
+                        workers: group
+                            .read(cx)
+                            .control_list(cx)
+                            .into_iter()
+                            .map(|worker| ControlWorker {
+                                id: worker.id,
+                                parent_id: worker.parent_id,
+                                title: worker.title,
+                                cwd: worker.cwd,
+                                status: worker.status,
+                                summary: worker.summary,
+                            })
+                            .collect(),
+                    },
+                    ControlRequest::Spawn {
+                        parent_id, command, ..
+                    } => match group.update(cx, |group, cx| {
+                        group.control_spawn(parent_id, parent_id, command, window, cx)
+                    }) {
+                        Some(worker_id) => ControlResponse::Spawned { worker_id },
+                        None => ControlResponse::Error {
+                            message: "unable to create worker tile".to_string(),
+                        },
+                    },
+                    ControlRequest::Send {
+                        worker_id, text, ..
+                    } => {
+                        let sent = group.update(cx, |group, cx| group.control_send(worker_id, &text, cx));
+                        if sent {
+                            ControlResponse::Acknowledged
+                        } else {
+                            ControlResponse::Error {
+                                message: format!("worker {worker_id} not found"),
+                            }
+                        }
+                    }
+                    ControlRequest::Broadcast {
+                        worker_ids, text, ..
+                    } => {
+                        let ids = if worker_ids.is_empty() {
+                            group.read(cx).control_list(cx).into_iter().map(|worker| worker.id).collect()
+                        } else {
+                            worker_ids
+                        };
+                        let sent = group.update(cx, |group, cx| {
+                            ids.iter().all(|worker_id| group.control_send(*worker_id, &text, cx))
+                        });
+                        if sent {
+                            ControlResponse::Acknowledged
+                        } else {
+                            ControlResponse::Error {
+                                message: "one or more workers were not found".to_string(),
+                            }
+                        }
+                    }
+                    ControlRequest::Close { worker_id, .. } => {
+                        let closed = group.update(cx, |group, cx| group.control_close(worker_id, window, cx));
+                        if closed {
+                            ControlResponse::Acknowledged
+                        } else {
+                            ControlResponse::Error {
+                                message: format!("worker {worker_id} not found"),
+                            }
+                        }
+                    }
+                    ControlRequest::Report {
+                        worker_id,
+                        status,
+                        summary,
+                        ..
+                    } => {
+                        let reported = group.update(cx, |group, cx| {
+                            group.control_report(worker_id, status, summary, cx)
+                        });
+                        if reported {
+                            ControlResponse::Acknowledged
+                        } else {
+                            ControlResponse::Error {
+                                message: format!("worker {worker_id} not found"),
+                            }
+                        }
+                    }
+                })
+            })
+            .unwrap_or_else(|error| ControlResponse::Error {
+                message: format!("control request failed: {error:#}"),
+            })
+    })
+}
+
 pub async fn handle_cli_connection(
     (mut requests, responses): (
         mpsc::UnboundedReceiver<CliRequest>,
@@ -494,6 +653,16 @@ pub async fn handle_cli_connection(
 
                 let status = if open_workspace_result.is_err() { 1 } else { 0 };
                 responses.send(CliResponse::Exit { status }).log_err();
+            }
+            CliRequest::Control { request } => {
+                let response = handle_control_request(request, cx);
+                let failed = matches!(response, ControlResponse::Error { .. });
+                responses.send(CliResponse::Control(response)).log_err();
+                responses
+                    .send(CliResponse::Exit {
+                        status: if failed { 1 } else { 0 },
+                    })
+                    .log_err();
             }
             CliRequest::SetOpenBehavior { .. } => {
                 // We handle this case in a situation-specific way in

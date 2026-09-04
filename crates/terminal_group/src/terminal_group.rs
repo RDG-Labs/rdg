@@ -21,6 +21,7 @@ use gpui::{
     Point, Subscription, Task, WeakEntity, WindowHandle, WindowOptions, actions,
 };
 use project::Project;
+use serde::Serialize;
 use settings::Settings as _;
 use std::collections::{HashMap, HashSet};
 use terminal_view::TerminalView;
@@ -407,6 +408,23 @@ fn index_in_axis(axis: &PaneAxis, pane: &Entity<Pane>) -> Option<usize> {
         .position(|child| matches!(child, Member::Pane(candidate) if candidate == pane))
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkerInfo {
+    pub id: u64,
+    pub parent_id: Option<u64>,
+    pub title: String,
+    pub cwd: Option<String>,
+    pub status: String,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct WorkerMetadata {
+    parent_id: Option<u64>,
+    status: String,
+    summary: Option<String>,
+}
+
 /// Sibling proportions captured before a split, so they can be restored after.
 struct AxisSnapshot {
     flexes: Vec<f32>,
@@ -432,6 +450,7 @@ pub struct TerminalGroup {
     /// and a tile can be focused before an earlier spawn has landed; without
     /// this the tile would get two terminals and immediately split itself.
     spawning: HashSet<gpui::EntityId>,
+    worker_metadata: HashMap<u64, WorkerMetadata>,
     /// Where an in-flight tile drag would land. Recomputed as the pointer moves
     /// and cleared when the drag ends, however it ends.
     drop_target: Option<(Entity<Pane>, DropZone)>,
@@ -504,6 +523,7 @@ impl TerminalGroup {
                 title: None,
                 predicted_sizes: HashMap::default(),
                 spawning: HashSet::default(),
+                worker_metadata: HashMap::default(),
                 drop_target: None,
                 detached: false,
                 detached_origin: None,
@@ -759,7 +779,7 @@ impl TerminalGroup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.split_pane_with_command(source, direction, None, window, cx);
+        self.split_pane_with_command(source, direction, None, None, window, cx);
     }
 
     fn split_pane_with_command(
@@ -767,9 +787,10 @@ impl TerminalGroup {
         source: &Entity<Pane>,
         direction: SplitDirection,
         init_command: Option<String>,
+        parent_id: Option<u64>,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
+    ) -> Option<Entity<Pane>> {
         let source = source.clone();
 
         // The cap is the backstop that holds even when nothing can be measured,
@@ -777,7 +798,7 @@ impl TerminalGroup {
         let settings = *TerminalWorkspaceSettings::get_global(cx);
         if self.center.panes().len() >= settings.max_tiles {
             self.report_no_room(cx);
-            return;
+            return None;
         }
 
         // An unpainted group has no geometry to judge. Refusing there would
@@ -789,7 +810,7 @@ impl TerminalGroup {
                     SplitOutcome::Split(direction) => direction,
                     SplitOutcome::Refused => {
                         self.report_no_room(cx);
-                        return;
+                        return None;
                     }
                 }
             }
@@ -827,9 +848,13 @@ impl TerminalGroup {
             self.predict_split_sizes(&source, &new_pane, metrics, direction);
         }
         self.set_active_pane(&new_pane, window, cx);
-        self.spawn_terminal_into(new_pane, working_directory, init_command, window, cx)
+        let init_command = init_command.map(|command| {
+            self.worker_init_command(&new_pane, command, parent_id)
+        });
+        self.spawn_terminal_into(new_pane.clone(), working_directory, init_command, window, cx)
             .detach_and_log_err(cx);
         cx.notify();
+        Some(new_pane)
     }
 
     fn report_no_room(&self, cx: &mut Context<Self>) {
@@ -1047,7 +1072,168 @@ impl TerminalGroup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.split_pane_with_command(pane, SplitDirection::Right, Some(command), window, cx);
+        if let Some(pane) = self.split_pane_with_command(
+            pane,
+            SplitDirection::Right,
+            Some(command),
+            None,
+            window,
+            cx,
+        ) {
+            self.worker_metadata.insert(
+                pane.entity_id().as_u64(),
+                WorkerMetadata {
+                    parent_id: None,
+                    status: "starting".to_string(),
+                    summary: None,
+                },
+            );
+        }
+    }
+
+    fn worker_init_command(
+        &self,
+        pane: &Entity<Pane>,
+        command: String,
+        parent_id: Option<u64>,
+    ) -> String {
+        let group_id = self.weak_self.entity_id().as_u64();
+        let worker_id = pane.entity_id().as_u64();
+        #[cfg(windows)]
+        let prefix = format!(
+            "set RDG_GROUP_ID={group_id} && set RDG_WORKER_ID={worker_id}{} && ",
+            parent_id.map_or(String::new(), |id| format!(" && set RDG_PARENT_WORKER_ID={id}")),
+        );
+        #[cfg(not(windows))]
+        let prefix = format!(
+            "export RDG_GROUP_ID={group_id} RDG_WORKER_ID={worker_id}{}; ",
+            parent_id.map_or(String::new(), |id| format!(" RDG_PARENT_WORKER_ID={id}")),
+        );
+        format!("{prefix}{command}")
+    }
+
+    pub fn control_list(&self, cx: &App) -> Vec<WorkerInfo> {
+        self.center
+            .panes()
+            .into_iter()
+            .map(|pane| {
+                let id = pane.entity_id().as_u64();
+                let metadata = self.worker_metadata.get(&id);
+                let (title, cwd) = tile_terminal(pane.read(cx), cx)
+                    .map(|terminal_view| {
+                        let terminal = terminal_view.read(cx).terminal().read(cx);
+                        (
+                            terminal
+                                .foreground_process_command_name()
+                                .unwrap_or_else(|| terminal.title(true)),
+                            terminal
+                                .working_directory()
+                                .map(|path| path.to_string_lossy().into_owned()),
+                        )
+                    })
+                    .unwrap_or_else(|| ("Terminal".to_string(), None));
+                WorkerInfo {
+                    id,
+                    parent_id: metadata.and_then(|metadata| metadata.parent_id),
+                    title,
+                    cwd,
+                    status: metadata
+                        .map(|metadata| metadata.status.clone())
+                        .unwrap_or_else(|| "unmanaged".to_string()),
+                    summary: metadata.and_then(|metadata| metadata.summary.clone()),
+                }
+            })
+            .collect()
+    }
+
+    pub fn control_spawn(
+        &mut self,
+        source_id: Option<u64>,
+        parent_id: Option<u64>,
+        command: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<u64> {
+        let source = source_id
+            .and_then(|id| {
+                self.center
+                    .panes()
+                    .into_iter()
+                    .find(|pane| pane.entity_id().as_u64() == id)
+                    .cloned()
+            })
+            .unwrap_or_else(|| self.active_pane.clone());
+        let pane = self.split_pane_with_command(
+            &source,
+            SplitDirection::Right,
+            Some(command),
+            parent_id,
+            window,
+            cx,
+        )?;
+        let id = pane.entity_id().as_u64();
+        self.worker_metadata.insert(
+            id,
+            WorkerMetadata {
+                parent_id,
+                status: "starting".to_string(),
+                summary: None,
+            },
+        );
+        Some(id)
+    }
+
+    pub fn control_send(&self, worker_id: u64, text: &str, cx: &mut App) -> bool {
+        let Some(pane) = self
+            .center
+            .panes()
+            .into_iter()
+            .find(|pane| pane.entity_id().as_u64() == worker_id)
+        else {
+            return false;
+        };
+        let Some(terminal_view) = tile_terminal(pane.read(cx), cx) else {
+            return false;
+        };
+        let terminal = terminal_view.read(cx).terminal().clone();
+        terminal.update(cx, |terminal, _| terminal.input(text.as_bytes().to_vec()));
+        true
+    }
+
+    pub fn control_close(
+        &mut self,
+        worker_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(pane) = self
+            .center
+            .panes()
+            .into_iter()
+            .find(|pane| pane.entity_id().as_u64() == worker_id)
+            .cloned()
+        else {
+            return false;
+        };
+        self.worker_metadata.remove(&worker_id);
+        self.close_tile(&pane, window, cx);
+        true
+    }
+
+    pub fn control_report(
+        &mut self,
+        worker_id: u64,
+        status: String,
+        summary: Option<String>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(metadata) = self.worker_metadata.get_mut(&worker_id) else {
+            return false;
+        };
+        metadata.status = status;
+        metadata.summary = summary;
+        cx.notify();
+        true
     }
 
     /// Places a terminal that arrived from outside into a tile of its own.
@@ -1138,6 +1324,7 @@ impl TerminalGroup {
 
         self.predicted_sizes.remove(&pane.entity_id());
         self.spawning.remove(&pane.entity_id());
+        self.worker_metadata.remove(&pane.entity_id().as_u64());
         match self.center.remove(pane, cx) {
             Ok(_) => {
                 let next = focus_on_pane

@@ -52,6 +52,63 @@ pub enum CliBehaviorSetting {
     NewWindow,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ControlRequest {
+    List {
+        group_id: Option<u64>,
+    },
+    Spawn {
+        group_id: Option<u64>,
+        parent_id: Option<u64>,
+        command: String,
+    },
+    Send {
+        group_id: Option<u64>,
+        worker_id: u64,
+        text: String,
+    },
+    Broadcast {
+        group_id: Option<u64>,
+        worker_ids: Vec<u64>,
+        text: String,
+    },
+    Close {
+        group_id: Option<u64>,
+        worker_id: u64,
+    },
+    Report {
+        group_id: Option<u64>,
+        worker_id: u64,
+        status: String,
+        summary: Option<String>,
+    },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ControlWorker {
+    pub id: u64,
+    pub parent_id: Option<u64>,
+    pub title: String,
+    pub cwd: Option<String>,
+    pub status: String,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ControlResponse {
+    Listed {
+        group_id: u64,
+        workers: Vec<ControlWorker>,
+    },
+    Spawned {
+        worker_id: u64,
+    },
+    Acknowledged,
+    Error {
+        message: String,
+    },
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CliRequest {
     Open {
@@ -72,11 +129,15 @@ pub enum CliRequest {
     SetOpenBehavior {
         behavior: CliBehaviorSetting,
     },
+    Control {
+        request: ControlRequest,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum CliResponse {
     Ping,
+    Control(ControlResponse),
     Stdout { message: String },
     Stderr { message: String },
     Exit { status: i32 },
