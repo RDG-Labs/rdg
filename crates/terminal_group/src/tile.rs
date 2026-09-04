@@ -191,6 +191,19 @@ fn render_tile_header(
                                 group.split_tile(&pane_for_terminal, window, cx);
                             }),
                         );
+                        let pane_for_custom_command = pane_entity.clone();
+                        let group_for_custom_command = group.clone();
+                        menu = menu.separator().entry(
+                            "Custom Command…",
+                            Some(crate::CustomCommand.boxed_clone()),
+                            window.handler_for(&group_for_custom_command, move |group, window, cx| {
+                                group.prompt_custom_command(
+                                    pane_for_custom_command.clone(),
+                                    window,
+                                    cx,
+                                );
+                            }),
+                        );
                         if !agents.is_empty() {
                             menu = menu.separator().label("Installed Agents");
                             for agent in &agents {

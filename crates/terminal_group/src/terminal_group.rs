@@ -17,17 +17,19 @@ pub use split_guard::{SplitGuard, SplitOutcome, TileMetrics, TileMinimum, resolv
 
 use anyhow::Result;
 use gpui::{
-    AnyElement, App, DragMoveEvent, Entity, EventEmitter, FocusHandle, Focusable, Point,
-    Subscription, Task, WeakEntity, WindowHandle, WindowOptions, actions,
+    AnyElement, App, DismissEvent, DragMoveEvent, Entity, EventEmitter, FocusHandle, Focusable,
+    Point, Subscription, Task, WeakEntity, WindowHandle, WindowOptions, actions,
 };
 use project::Project;
 use settings::Settings as _;
 use std::collections::{HashMap, HashSet};
 use terminal_view::TerminalView;
-use ui::prelude::*;
+use ui::{AlertModal, prelude::*};
+use ui_input::InputField;
 use workspace::{
-    Item, Member, MultiWorkspace, Pane, PaneAxis, PaneGroup, SerializableItem, SplitDirection,
-    Toast, Workspace, WorkspaceDb, WorkspaceId, item::ItemEvent, notifications::NotificationId,
+    Item, Member, ModalView, MultiWorkspace, Pane, PaneAxis, PaneGroup, SerializableItem,
+    SplitDirection, Toast, Workspace, WorkspaceDb, WorkspaceId, item::ItemEvent,
+    notifications::NotificationId,
 };
 
 use crate::persistence::{
@@ -77,6 +79,8 @@ actions!(
         Detach,
         /// Reattaches a detached terminal group to its source workspace.
         Reattach,
+        /// Opens a prompt to launch an arbitrary command in a new tile.
+        CustomCommand,
     ]
 );
 
@@ -127,6 +131,7 @@ pub fn init(cx: &mut App) {
         workspace.register_action(forward_close_tile);
         workspace.register_action(forward_equalize);
         workspace.register_action(forward_reattach);
+        workspace.register_action(forward_custom_command);
     })
     .detach();
 }
@@ -178,6 +183,20 @@ fn forward_reattach(
 ) {
     if let Some(group) = active_group(workspace, cx) {
         group.update(cx, |group, cx| group.reattach(window, cx));
+    }
+}
+
+fn forward_custom_command(
+    workspace: &mut Workspace,
+    _: &CustomCommand,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    if let Some(group) = active_group(workspace, cx) {
+        let pane = group.read(cx).active_pane.clone();
+        group.update(cx, |group, cx| {
+            group.prompt_custom_command(pane, window, cx)
+        });
     }
 }
 
@@ -902,6 +921,25 @@ impl TerminalGroup {
         self.split_pane(pane, SplitDirection::Right, window, cx);
     }
 
+    fn prompt_custom_command(
+        &self,
+        pane: Entity<Pane>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(workspace) = self.workspace.upgrade() else {
+            return;
+        };
+        let group = self.weak_self.clone();
+        window.defer(cx, move |window, cx| {
+            workspace.update(cx, |workspace, cx| {
+                workspace.toggle_modal(window, cx, |window, cx| {
+                    CustomCommandModal::new(group, pane, window, cx)
+                });
+            });
+        });
+    }
+
     fn rebind_workspace(
         &mut self,
         workspace: WeakEntity<Workspace>,
@@ -1317,6 +1355,104 @@ impl Item for TerminalGroup {
 
     fn to_item_events(event: &Self::Event, f: &mut dyn FnMut(ItemEvent)) {
         f(*event)
+    }
+}
+
+struct CustomCommandModal {
+    group: WeakEntity<TerminalGroup>,
+    pane: Entity<Pane>,
+    command: Entity<InputField>,
+}
+
+impl CustomCommandModal {
+    fn new(
+        group: WeakEntity<TerminalGroup>,
+        pane: Entity<Pane>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let command = cx.new(|cx| InputField::new(window, cx, "Command to run"));
+        Self {
+            group,
+            pane,
+            command,
+        }
+    }
+
+    fn dismiss(&mut self, cx: &mut Context<Self>) {
+        cx.emit(DismissEvent);
+    }
+
+    fn confirm(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let command = self.command.read(cx).text(cx).trim().to_owned();
+        if command.is_empty() {
+            self.command.update(cx, |command, cx| {
+                command.set_error(Some("Enter a command to run"), cx);
+            });
+            return;
+        }
+
+        let group = self.group.clone();
+        let pane = self.pane.clone();
+        self.dismiss(cx);
+        window.defer(cx, move |window, cx| {
+            if let Some(group) = group.upgrade() {
+                group.update(cx, |group, cx| {
+                    group.spawn_agent_beside(&pane, command, window, cx);
+                });
+            }
+        });
+    }
+}
+
+impl Focusable for CustomCommandModal {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.command.focus_handle(cx)
+    }
+}
+
+impl EventEmitter<DismissEvent> for CustomCommandModal {}
+impl ModalView for CustomCommandModal {}
+
+impl Render for CustomCommandModal {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        AlertModal::new("custom-command-modal")
+            .width(rems(36.))
+            .key_context("CustomCommandModal")
+            .track_focus(&self.focus_handle(cx))
+            .on_action(cx.listener(|this, _: &menu::Confirm, window, cx| {
+                this.confirm(window, cx);
+            }))
+            .on_action(cx.listener(|this, _: &menu::Cancel, _window, cx| {
+                this.dismiss(cx);
+            }))
+            .header(Label::new("Launch Custom Command"))
+            .child(
+                v_flex()
+                    .p_3()
+                    .gap_2()
+                    .child(Label::new("Run any shell command in a new terminal tile.").color(Color::Muted))
+                    .child(self.command.clone()),
+            )
+            .footer(
+                h_flex()
+                    .px_3()
+                    .pb_3()
+                    .gap_1()
+                    .justify_end()
+                    .child(
+                        Button::new("cancel", "Cancel")
+                            .on_click(cx.listener(|this, _, _, cx| this.dismiss(cx))),
+                    )
+                    .child(
+                        Button::new("run", "Run")
+                            .style(ButtonStyle::Filled)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.confirm(window, cx);
+                            })),
+                    ),
+            )
+            .into_any_element()
     }
 }
 
