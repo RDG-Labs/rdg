@@ -348,6 +348,10 @@ impl MultiWorkspace {
         }
     }
 
+    pub fn add_window_closed_subscription(&mut self, subscription: Subscription) {
+        self._subscriptions.push(subscription);
+    }
+
     pub fn register_sidebar<T: Sidebar>(&mut self, sidebar: Entity<T>, cx: &mut Context<Self>) {
         self._subscriptions
             .push(cx.observe(&sidebar, |_this, _, cx| {

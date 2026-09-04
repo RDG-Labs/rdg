@@ -543,6 +543,10 @@ enum PinOperation {
 }
 
 impl Pane {
+    pub fn rebind_workspace(&mut self, workspace: WeakEntity<Workspace>) {
+        self.workspace = workspace;
+    }
+
     pub fn new(
         workspace: WeakEntity<Workspace>,
         project: Entity<Project>,

@@ -1029,6 +1029,21 @@ impl TerminalView {
         dispatch_context
     }
 
+    pub fn rebind_workspace(
+        &mut self,
+        workspace: WeakEntity<Workspace>,
+        workspace_id: Option<WorkspaceId>,
+        window: &mut Window,
+        cx: &mut Context<TerminalView>,
+    ) {
+        self.workspace = workspace.clone();
+        self.workspace_id = workspace_id;
+        self._terminal_subscriptions =
+            subscribe_for_terminal_events(&self.terminal, workspace, window, cx);
+        self.needs_serialize = workspace_id.is_some();
+        cx.emit(ItemEvent::UpdateTab);
+    }
+
     fn set_terminal(
         &mut self,
         terminal: Entity<Terminal>,

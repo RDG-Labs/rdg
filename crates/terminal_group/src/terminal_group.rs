@@ -18,16 +18,16 @@ pub use split_guard::{SplitGuard, SplitOutcome, TileMetrics, TileMinimum, resolv
 use anyhow::Result;
 use gpui::{
     AnyElement, App, DragMoveEvent, Entity, EventEmitter, FocusHandle, Focusable, Point,
-    Subscription, Task, WeakEntity, actions,
+    Subscription, Task, WeakEntity, WindowHandle, WindowOptions, actions,
 };
 use project::Project;
+use settings::Settings as _;
 use std::collections::{HashMap, HashSet};
 use terminal_view::TerminalView;
 use ui::prelude::*;
-use settings::Settings as _;
 use workspace::{
-    Item, Member, Pane, PaneAxis, PaneGroup, SerializableItem, SplitDirection, Toast, Workspace,
-    WorkspaceId, item::ItemEvent, notifications::NotificationId,
+    Item, Member, MultiWorkspace, Pane, PaneAxis, PaneGroup, SerializableItem, SplitDirection,
+    Toast, Workspace, WorkspaceDb, WorkspaceId, item::ItemEvent, notifications::NotificationId,
 };
 
 use crate::persistence::{
@@ -73,6 +73,10 @@ actions!(
         SwapDown,
         /// Restores every tile to an equal share of the grid.
         Equalize,
+        /// Detaches the terminal group into its own window.
+        Detach,
+        /// Reattaches a detached terminal group to its source workspace.
+        Reattach,
     ]
 );
 
@@ -122,6 +126,7 @@ pub fn init(cx: &mut App) {
         workspace.register_action(forward_focus_next);
         workspace.register_action(forward_close_tile);
         workspace.register_action(forward_equalize);
+        workspace.register_action(forward_reattach);
     })
     .detach();
 }
@@ -165,10 +170,155 @@ fn forward_equalize(
     }
 }
 
+fn forward_reattach(
+    workspace: &mut Workspace,
+    _: &Reattach,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    if let Some(group) = active_group(workspace, cx) {
+        group.update(cx, |group, cx| group.reattach(window, cx));
+    }
+}
+
 fn active_group(workspace: &Workspace, cx: &App) -> Option<Entity<TerminalGroup>> {
     workspace.active_item_as::<TerminalGroup>(cx)
 }
 
+pub fn detach_group(
+    workspace: &mut Workspace,
+    _: &Detach,
+    options: WindowOptions,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    let Some(group) = active_group(workspace, cx) else {
+        return;
+    };
+    let Some(source_window) = window.window_handle().downcast::<MultiWorkspace>() else {
+        return;
+    };
+
+    let source_workspace = workspace.weak_handle();
+    let project = workspace.project().clone();
+    let app_state = workspace.app_state().clone();
+    let source_pane = workspace.active_pane().clone();
+    group.update(cx, |group, _cx| {
+        group.detached = true;
+        group.detached_origin = Some(DetachedOrigin {
+            workspace: source_workspace.clone(),
+            window: source_window,
+        });
+    });
+    source_pane.update(cx, |pane, cx| {
+        pane.remove_item(group.entity_id(), false, false, window, cx);
+    });
+
+    let group_for_window = group.clone();
+    let source_workspace_for_window = source_workspace.clone();
+    let result = cx.open_window(options, move |window, cx| {
+        let target_workspace = cx.new(|cx| Workspace::new(None, project, app_state, window, cx));
+        let multi_workspace =
+            cx.new(|cx| MultiWorkspace::new(target_workspace.clone(), window, cx));
+
+        target_workspace.update(cx, |target_workspace, cx| {
+            group_for_window.update(cx, |group, cx| {
+                group.rebind_workspace(target_workspace.weak_handle(), None, window, cx);
+            });
+            target_workspace.add_item_to_active_pane(
+                Box::new(group_for_window.clone()),
+                None,
+                true,
+                window,
+                cx,
+            );
+        });
+
+        let detached_window_id = window.window_handle().window_id();
+        let target_workspace = target_workspace.downgrade();
+        let group_for_persistence = group_for_window.clone();
+        let multi_workspace_for_persistence = multi_workspace.clone();
+        let database = WorkspaceDb::global(cx);
+        let window_id = detached_window_id.as_u64();
+        window.spawn(cx, async move |cx| {
+            let workspace_id = database.next_id().await?;
+            target_workspace.update_in(cx, |workspace, window, cx| {
+                workspace.set_database_id(workspace_id);
+                group_for_persistence.update(cx, |group, cx| {
+                    group.rebind_workspace(workspace.weak_handle(), Some(workspace_id), window, cx);
+                });
+            })?;
+            multi_workspace_for_persistence.update_in(cx, |multi_workspace, _, cx| {
+                multi_workspace.serialize(cx);
+            })?;
+            database
+                .set_session_binding(workspace_id, None, Some(window_id))
+                .await?;
+            anyhow::Ok(())
+        })
+        .detach_and_log_err(cx);
+
+        let source_workspace = source_workspace_for_window;
+        let group = group_for_window.clone();
+        let subscription = cx.on_window_closed(move |cx, window_id| {
+            if window_id != detached_window_id {
+                return;
+            }
+            if !group.read(cx).detached {
+                return;
+            }
+            let Some(source_workspace) = source_workspace.upgrade() else {
+                return;
+            };
+            if let Err(error) = source_window.update(cx, |_, source_window, cx| {
+                source_workspace.update(cx, |source_workspace, cx| {
+                    group.update(cx, |group, cx| {
+                        group.detached = false;
+                        group.detached_origin = None;
+                        group.rebind_workspace(
+                            source_workspace.weak_handle(),
+                            source_workspace.database_id(),
+                            source_window,
+                            cx,
+                        );
+                    });
+                    source_workspace.add_item_to_active_pane(
+                        Box::new(group.clone()),
+                        None,
+                        true,
+                        source_window,
+                        cx,
+                    );
+                    group.update(cx, |group, cx| {
+                        group.rebind_workspace(
+                            source_workspace.weak_handle(),
+                            source_workspace.database_id(),
+                            source_window,
+                            cx,
+                        );
+                    });
+                });
+            }) {
+                log::error!("failed to reattach terminal group after window close: {error:#}");
+            }
+        });
+        multi_workspace.update(cx, |multi_workspace, _cx| {
+            multi_workspace.add_window_closed_subscription(subscription);
+        });
+        window.activate_window();
+        multi_workspace
+    });
+
+    if let Err(error) = result {
+        log::error!("failed to detach terminal group: {error:#}");
+        group.update(cx, |group, cx| {
+            group.detached = false;
+            group.detached_origin = None;
+            group.rebind_workspace(source_workspace, workspace.database_id(), window, cx);
+        });
+        workspace.add_item_to_active_pane(Box::new(group), None, true, window, cx);
+    }
+}
 
 /// A tile being dragged by its header.
 #[derive(Clone)]
@@ -176,6 +326,11 @@ pub struct DraggedTile {
     pub pane: Entity<Pane>,
     pub group: WeakEntity<TerminalGroup>,
     pub title: SharedString,
+}
+
+struct DetachedOrigin {
+    workspace: WeakEntity<Workspace>,
+    window: WindowHandle<MultiWorkspace>,
 }
 
 impl Render for DraggedTile {
@@ -261,6 +416,8 @@ pub struct TerminalGroup {
     /// Where an in-flight tile drag would land. Recomputed as the pointer moves
     /// and cleared when the drag ends, however it ends.
     drop_target: Option<(Entity<Pane>, DropZone)>,
+    detached: bool,
+    detached_origin: Option<DetachedOrigin>,
     /// Brings restored tiles up shortly after the grid is visible. Held so the
     /// work stops if the group is closed while tiles are still starting.
     _deferred_spawns: Option<Task<()>>,
@@ -329,6 +486,8 @@ impl TerminalGroup {
                 predicted_sizes: HashMap::default(),
                 spawning: HashSet::default(),
                 drop_target: None,
+                detached: false,
+                detached_origin: None,
                 _deferred_spawns: None,
                 _subscriptions: subscriptions,
             }
@@ -393,7 +552,8 @@ impl TerminalGroup {
 
             if let Some(command) = init_command {
                 terminal.update(cx, |terminal, cx| {
-                    terminal.write_init_command_after_startup(format!("{command}\r").into_bytes(), cx);
+                    terminal
+                        .write_init_command_after_startup(format!("{command}\r").into_bytes(), cx);
                 });
             }
 
@@ -605,18 +765,15 @@ impl TerminalGroup {
         // block a legitimate first split; the next one is measured and governed.
         let metrics = self.metrics_for(&source, cx);
         let direction = match metrics {
-            Some(metrics) => match resolve_split(
-                metrics,
-                direction,
-                settings.minimum,
-                settings.split_guard,
-            ) {
-                SplitOutcome::Split(direction) => direction,
-                SplitOutcome::Refused => {
-                    self.report_no_room(cx);
-                    return;
+            Some(metrics) => {
+                match resolve_split(metrics, direction, settings.minimum, settings.split_guard) {
+                    SplitOutcome::Split(direction) => direction,
+                    SplitOutcome::Refused => {
+                        self.report_no_room(cx);
+                        return;
+                    }
                 }
-            },
+            }
             None => direction,
         };
 
@@ -629,7 +786,11 @@ impl TerminalGroup {
         // workspace from a context that already holds it panics. `None` lets the
         // project pick its own default.
         let working_directory = tile_terminal(source.read(cx), cx).and_then(|terminal_view| {
-            terminal_view.read(cx).terminal().read(cx).working_directory()
+            terminal_view
+                .read(cx)
+                .terminal()
+                .read(cx)
+                .working_directory()
         });
 
         let snapshot = parent_axis(&self.center.root, &source).and_then(|axis| {
@@ -737,13 +898,108 @@ impl TerminalGroup {
     /// Adds a tile beside `pane`. Backs the `+` button in the tile header,
     /// which is the only mouse-driven way to grow a grid — the tab bar's own
     /// `+` belongs to the workspace pane and creates items outside the group.
-    pub fn split_tile(
+    pub fn split_tile(&mut self, pane: &Entity<Pane>, window: &mut Window, cx: &mut Context<Self>) {
+        self.split_pane(pane, SplitDirection::Right, window, cx);
+    }
+
+    fn rebind_workspace(
         &mut self,
-        pane: &Entity<Pane>,
+        workspace: WeakEntity<Workspace>,
+        workspace_id: Option<WorkspaceId>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.split_pane(pane, SplitDirection::Right, window, cx);
+        self.workspace = workspace.clone();
+        for pane in self.center.panes() {
+            pane.update(cx, |pane, _cx| pane.rebind_workspace(workspace.clone()));
+            if let Some(terminal) = tile_terminal(pane.read(cx), cx) {
+                terminal.update(cx, |terminal, cx| {
+                    terminal.rebind_workspace(workspace.clone(), workspace_id, window, cx);
+                });
+            }
+        }
+        cx.emit(ItemEvent::UpdateTab);
+    }
+
+    fn reattach(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(origin) = self.detached_origin.take() else {
+            return;
+        };
+        let Some(group) = self.weak_self.upgrade() else {
+            return;
+        };
+        let target_pane = self.active_pane.clone();
+        let target_workspace = self.workspace.clone();
+        let target_workspace_id = target_workspace
+            .read_with(cx, |workspace, _| workspace.database_id())
+            .ok()
+            .flatten();
+
+        window.defer(cx, move |window, cx| {
+            target_pane.update(cx, |pane, cx| {
+                pane.remove_item(group.entity_id(), false, false, window, cx);
+            });
+
+            let source_workspace = origin.workspace.clone();
+            let result = origin.window.update(cx, |_, source_window, cx| {
+                let Some(source_workspace) = source_workspace.upgrade() else {
+                    return Err(anyhow::anyhow!("source workspace no longer exists"));
+                };
+                source_workspace.update(cx, |source_workspace, cx| {
+                    group.update(cx, |group, cx| {
+                        group.detached = false;
+                        group.rebind_workspace(
+                            source_workspace.weak_handle(),
+                            source_workspace.database_id(),
+                            source_window,
+                            cx,
+                        );
+                    });
+                    source_workspace.add_item_to_active_pane(
+                        Box::new(group.clone()),
+                        None,
+                        true,
+                        source_window,
+                        cx,
+                    );
+                    group.update(cx, |group, cx| {
+                        group.rebind_workspace(
+                            source_workspace.weak_handle(),
+                            source_workspace.database_id(),
+                            source_window,
+                            cx,
+                        );
+                    });
+                });
+                window.remove_window();
+                Ok(())
+            });
+
+            if let Err(error) = result {
+                log::error!("failed to reattach terminal group: {error:#}");
+                if let Some(target_workspace) = target_workspace.upgrade() {
+                    target_workspace.update(cx, |target_workspace, cx| {
+                        group.update(cx, |group, cx| {
+                            group.detached = true;
+                            group.detached_origin = Some(origin);
+                            group.rebind_workspace(
+                                target_workspace.weak_handle(),
+                                target_workspace_id,
+                                window,
+                                cx,
+                            );
+                        });
+                        target_workspace.add_item_to_active_pane(
+                            Box::new(group),
+                            None,
+                            true,
+                            window,
+                            cx,
+                        );
+                    });
+                }
+            }
+        });
     }
 
     pub fn spawn_agent_beside(
@@ -753,13 +1009,7 @@ impl TerminalGroup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.split_pane_with_command(
-            pane,
-            SplitDirection::Right,
-            Some(command),
-            window,
-            cx,
-        );
+        self.split_pane_with_command(pane, SplitDirection::Right, Some(command), window, cx);
     }
 
     /// Places a terminal that arrived from outside into a tile of its own.
@@ -821,12 +1071,7 @@ impl TerminalGroup {
         cx.emit(ItemEvent::UpdateTab);
     }
 
-    pub fn close_tile(
-        &mut self,
-        pane: &Entity<Pane>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub fn close_tile(&mut self, pane: &Entity<Pane>, window: &mut Window, cx: &mut Context<Self>) {
         pane.update(cx, |pane, cx| {
             pane.close_all_items(&Default::default(), window, cx)
                 .detach_and_log_err(cx);
@@ -959,8 +1204,6 @@ impl TerminalGroup {
     }
 }
 
-
-
 impl Focusable for TerminalGroup {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.active_pane.focus_handle(cx)
@@ -1025,9 +1268,7 @@ impl Item for TerminalGroup {
         // and this group; moving the item has to touch both again.
         window.defer(cx, move |window, cx| {
             let taken = source.update(cx, |source, cx| {
-                let index = source
-                    .items()
-                    .position(|item| item.item_id() == item_id)?;
+                let index = source.items().position(|item| item.item_id() == item_id)?;
                 source.activate_item(index, false, false, window, cx);
                 source.take_active_item(window, cx)
             });
@@ -1127,9 +1368,11 @@ impl SerializableItem for TerminalGroup {
             }
         };
 
-        Some(cx.background_spawn(async move {
-            db.save_layout(item_id, workspace_id, encoded).await
-        }))
+        Some(
+            cx.background_spawn(
+                async move { db.save_layout(item_id, workspace_id, encoded).await },
+            ),
+        )
     }
 
     fn should_serialize(&self, event: &Self::Event) -> bool {
@@ -1180,12 +1423,20 @@ impl TerminalGroup {
 
         self.center = PaneGroup::with_root(root);
 
-        let magnified = layout.magnified_tile.and_then(|index| tiles.get(index)).cloned();
+        let magnified = layout
+            .magnified_tile
+            .and_then(|index| tiles.get(index))
+            .cloned();
 
         // Magnification follows focus, so a magnified tile is the focused tile.
         let focused = magnified
             .clone()
-            .or_else(|| layout.focused_tile.and_then(|index| tiles.get(index)).cloned())
+            .or_else(|| {
+                layout
+                    .focused_tile
+                    .and_then(|index| tiles.get(index))
+                    .cloned()
+            })
             .unwrap_or_else(|| tiles[0].clone());
 
         self.active_pane = focused.clone();
@@ -1416,10 +1667,7 @@ impl Render for TerminalGroup {
             return div().size_full();
         };
 
-        let magnified = self
-            .magnified_pane
-            .as_ref()
-            .and_then(|pane| pane.upgrade());
+        let magnified = self.magnified_pane.as_ref().and_then(|pane| pane.upgrade());
 
         // A drag that ended anywhere — dropped, cancelled with escape, or
         // released outside the group — leaves no event on this element, so the
@@ -1514,6 +1762,9 @@ impl Render for TerminalGroup {
                 this.swap_in_direction(SplitDirection::Down, window, cx)
             }))
             .on_action(cx.listener(|this, _: &Equalize, _window, cx| this.equalize(cx)))
+            .on_action(cx.listener(|this, _: &Reattach, window, cx| {
+                this.reattach(window, cx);
+            }))
             // Escape cancels an in-flight drag. The terminal binds bare escape
             // to SendKeystroke, so without this a drag could only be ended by
             // dropping it somewhere.
@@ -1649,7 +1900,9 @@ mod tests {
                     );
                     group.update(cx, |group, cx| {
                         let tile = group.active_pane.clone();
-                        group.spawn_terminal_into(tile, None, None, window, cx).detach();
+                        group
+                            .spawn_terminal_into(tile, None, None, window, cx)
+                            .detach();
                     });
                     group
                 })
@@ -1864,7 +2117,11 @@ mod tests {
         cx.run_until_parked();
 
         group.read_with(cx, |group, cx| {
-            assert_eq!(group.tiles().len(), 2, "the surplus terminal needs its own tile");
+            assert_eq!(
+                group.tiles().len(),
+                2,
+                "the surplus terminal needs its own tile"
+            );
             for tile in group.tiles() {
                 assert_eq!(
                     tile.read(cx).items_len(),
@@ -2234,7 +2491,11 @@ mod tests {
             let Member::Axis(root) = &group.center.root else {
                 panic!("expected a row at the root");
             };
-            assert_eq!(root.members.len(), 2, "the root row should have lost a member");
+            assert_eq!(
+                root.members.len(),
+                2,
+                "the root row should have lost a member"
+            );
             assert!(
                 root.members
                     .iter()

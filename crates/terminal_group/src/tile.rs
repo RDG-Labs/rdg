@@ -7,7 +7,7 @@ use ui::prelude::*;
 use ui::{ContextMenu, IconButton, IconButtonShape, IconName, IconSize, Label, LabelSize, PopoverMenu, Tooltip};
 use workspace::{Pane, Workspace};
 
-use crate::{DraggedTile, TerminalGroup, installed_agents};
+use crate::{Detach, DraggedTile, Reattach, TerminalGroup, installed_agents};
 
 /// Height of a tile header. Charged against the usable area by the split guard,
 /// so the two must agree.
@@ -116,6 +116,9 @@ fn render_tile_header(
     let magnified = group
         .read_with(cx, |group, _| group.is_magnified(&cx.entity()))
         .unwrap_or(false);
+    let detached = group
+        .read_with(cx, |group, _| group.detached)
+        .unwrap_or(false);
 
     let title = terminal_view
         .as_ref()
@@ -190,6 +193,28 @@ fn render_tile_header(
                             window.handler_for(&group_for_terminal, move |group, window, cx| {
                                 group.split_tile(&pane_for_terminal, window, cx);
                             }),
+                        );
+                        menu = menu.separator().entry(
+                            if detached {
+                                "Reattach Group"
+                            } else {
+                                "Detach Group to New Window"
+                            },
+                            Some(if detached {
+                                Reattach.boxed_clone()
+                            } else {
+                                Detach.boxed_clone()
+                            }),
+                            move |window, cx| {
+                                window.dispatch_action(
+                                    if detached {
+                                        Reattach.boxed_clone()
+                                    } else {
+                                        Detach.boxed_clone()
+                                    },
+                                    cx,
+                                )
+                            },
                         );
 
                         if !agents.is_empty() {

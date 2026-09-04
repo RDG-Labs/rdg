@@ -76,6 +76,7 @@ use std::{
     sync::Arc,
     sync::atomic::{self, AtomicBool},
 };
+use terminal_group;
 use terminal_view::terminal_panel::{self, TerminalPanel};
 use theme::{ActiveTheme, SystemAppearance, ThemeRegistry, deserialize_icon_theme};
 use theme_settings::{ThemeSettings, load_user_theme};
@@ -1062,6 +1063,22 @@ fn register_actions(
                 workspace.toggle_panel_focus::<TerminalPanel>(window, cx);
             },
         )
+        .register_action(|workspace, action: &terminal_group::Detach, window, cx| {
+            let current_display = window.display(cx).map(|display| display.id());
+            let display_uuid = cx
+                .displays()
+                .into_iter()
+                .find(|display| Some(display.id()) != current_display)
+                .or_else(|| window.display(cx))
+                .and_then(|display| display.uuid().ok());
+            terminal_group::detach_group(
+                workspace,
+                action,
+                build_window_options(display_uuid, cx),
+                window,
+                cx,
+            );
+        })
         .register_action({
             let app_state = app_state.clone();
             move |_, _: &NewWindow, _, cx| {
