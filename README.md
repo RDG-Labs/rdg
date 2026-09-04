@@ -37,6 +37,38 @@ There are no prebuilt binaries yet; build from source.
 
 Use `./script/clippy` rather than `cargo clippy` — it applies the workspace lint configuration.
 
+## External CLI orchestration
+
+Rdg Terminal Groups can host and orchestrate external coding CLIs without embedding an
+agent or sending telemetry. Install the RDG orchestration skill into every supported CLI:
+
+```bash
+npx skills add RDG-Labs/rdg \
+  --skill rdg-orchestration \
+  --agent '*' \
+  --global \
+  --copy \
+  -y
+```
+
+For a project-local install, omit `--global`:
+
+```bash
+npx skills add RDG-Labs/rdg \
+  --skill rdg-orchestration \
+  --agent '*' \
+  --copy \
+  -y
+```
+
+The installer maps the skill to each CLI's native directory, including Pi, Claude Code,
+Codex, Cursor, Gemini CLI, OpenCode, and Zed. The skill teaches workers how to spawn
+children, send tasks, watch structured events, report status, and coordinate recursive
+Terminal Group workers.
+
+You can also use **+ → Install RDG Orchestration Skill** from a Terminal Group. Rdg opens
+the visible install command in a terminal rather than running `npx` invisibly.
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md).

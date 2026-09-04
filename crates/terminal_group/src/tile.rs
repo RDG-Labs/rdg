@@ -12,6 +12,8 @@ use crate::{DraggedTile, TerminalGroup, installed_agents};
 /// Height of a tile header. Charged against the usable area by the split guard,
 /// so the two must agree.
 pub(crate) const HEADER_HEIGHT: f32 = 24.;
+const ORCHESTRATION_SKILL_INSTALL_COMMAND: &str =
+    "npx skills add RDG-Labs/rdg --skill rdg-orchestration --agent '*' --global --copy -y";
 
 /// Builds a pane configured as a tile: no tab strip, no navigation, no drop
 /// targets, and a slim header in place of the tab bar.
@@ -212,6 +214,20 @@ fn render_tile_header(
                             window.handler_for(&group_for_custom_command, move |group, window, cx| {
                                 group.prompt_custom_command(
                                     pane_for_custom_command.clone(),
+                                    window,
+                                    cx,
+                                );
+                            }),
+                        );
+                        let pane_for_skill = pane_entity.clone();
+                        let group_for_skill = group.clone();
+                        menu = menu.entry(
+                            "Install RDG Orchestration Skill",
+                            None,
+                            window.handler_for(&group_for_skill, move |group, window, cx| {
+                                group.spawn_agent_beside(
+                                    &pane_for_skill,
+                                    ORCHESTRATION_SKILL_INSTALL_COMMAND.to_string(),
                                     window,
                                     cx,
                                 );
