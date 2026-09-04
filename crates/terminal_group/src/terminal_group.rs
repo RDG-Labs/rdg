@@ -18,8 +18,7 @@ pub use split_guard::{SplitGuard, SplitOutcome, TileMetrics, TileMinimum, resolv
 use anyhow::Result;
 use gpui::{
     AnyElement, App, DragMoveEvent, Entity, EventEmitter, FocusHandle, Focusable, Point,
-    Subscription,
-    Task, WeakEntity, actions,
+    Subscription, Task, WeakEntity, actions,
 };
 use project::Project;
 use std::collections::{HashMap, HashSet};
@@ -120,9 +119,56 @@ pub fn init(cx: &mut App) {
 
     cx.observe_new(|workspace: &mut Workspace, _window, _cx| {
         workspace.register_action(TerminalGroup::deploy);
+        workspace.register_action(forward_focus_next);
+        workspace.register_action(forward_close_tile);
+        workspace.register_action(forward_equalize);
     })
     .detach();
 }
+
+/// Routes a terminal-group action to the currently active terminal group tab, so
+/// the command palette exposes these actions while an editor or other item is
+/// in focus.
+fn forward_focus_next(
+    workspace: &mut Workspace,
+    _: &FocusNext,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    if let Some(group) = active_group(workspace, cx) {
+        group.update(cx, |group, cx| group.focus_next(window, cx));
+    }
+}
+
+fn forward_close_tile(
+    workspace: &mut Workspace,
+    _: &CloseTile,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    if let Some(group) = active_group(workspace, cx) {
+        group.update(cx, |group, cx| {
+            let pane = group.active_pane.clone();
+            group.close_tile(&pane, window, cx);
+        });
+    }
+}
+
+fn forward_equalize(
+    workspace: &mut Workspace,
+    _: &Equalize,
+    _window: &mut Window,
+    cx: &mut Context<Workspace>,
+) {
+    if let Some(group) = active_group(workspace, cx) {
+        group.update(cx, |group, cx| group.equalize(cx));
+    }
+}
+
+fn active_group(workspace: &Workspace, cx: &App) -> Option<Entity<TerminalGroup>> {
+    workspace.active_item_as::<TerminalGroup>(cx)
+}
+
 
 /// A tile being dragged by its header.
 #[derive(Clone)]
