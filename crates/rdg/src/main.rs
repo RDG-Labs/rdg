@@ -46,7 +46,7 @@ use rdg::{
     derive_paths_with_position, handle_cli_connection, handle_keymap_file_changes,
     initialize_workspace, open_paths_with_positions,
 };
-use release_channel::{AppCommitSha, AppVersion, ReleaseChannel};
+use release_channel::{AppCommitSha, AppVersion};
 use session::{AppSession, Session};
 use settings::{Settings, SettingsStore, watch_config_file};
 use smol::future::poll_once;
@@ -341,25 +341,32 @@ fn main() {
 
     let (open_listener, mut open_rx) = OpenListener::new();
 
-    let failed_single_instance_check = if *rdg_env_vars::ZED_STATELESS
-        || *release_channel::RELEASE_CHANNEL == ReleaseChannel::Dev
-    {
+    let failed_single_instance_check = if *rdg_env_vars::ZED_STATELESS {
         false
     } else {
-        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        #[cfg(target_os = "macos")]
         {
             crate::rdg::listen_for_cli_connections(open_listener.clone()).is_err()
         }
 
-        #[cfg(target_os = "windows")]
+        #[cfg(not(target_os = "macos"))]
         {
-            !crate::rdg::windows_only_instance::handle_single_instance(open_listener.clone(), &args)
-        }
+            if *release_channel::RELEASE_CHANNEL == release_channel::ReleaseChannel::Dev {
+                false
+            } else {
+                #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+                {
+                    crate::rdg::listen_for_cli_connections(open_listener.clone()).is_err()
+                }
 
-        #[cfg(target_os = "macos")]
-        {
-            use rdg::mac_only_instance::*;
-            ensure_only_instance() != IsOnlyInstance::Yes
+                #[cfg(target_os = "windows")]
+                {
+                    !crate::rdg::windows_only_instance::handle_single_instance(
+                        open_listener.clone(),
+                        &args,
+                    )
+                }
+            }
         }
     };
     if failed_single_instance_check {

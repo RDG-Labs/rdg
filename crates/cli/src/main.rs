@@ -1511,6 +1511,26 @@ mod mac_os {
                 }
 
                 Self::LocalPath { executable, .. } => {
+                    let data_dir = user_data_dir
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| paths::data_dir().clone());
+                    let socket_path = data_dir.join(format!(
+                        "zed-{}.sock",
+                        *release_channel::RELEASE_CHANNEL_NAME
+                    ));
+                    let send_result = std::os::unix::net::UnixDatagram::unbound().and_then(
+                        |socket| {
+                            socket.connect(&socket_path)?;
+                            socket.send(url.as_bytes()).map(|_| ())
+                        },
+                    );
+                    match send_result {
+                        Ok(()) => return Ok(()),
+                        Err(error) => {
+                            eprintln!("could not connect to the running RDG instance: {error}");
+                        }
+                    }
+
                     let executable_parent = executable
                         .parent()
                         .with_context(|| format!("Executable {executable:?} path has no parent"))?;
