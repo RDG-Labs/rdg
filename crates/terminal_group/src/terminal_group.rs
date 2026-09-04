@@ -25,7 +25,10 @@ use serde::Serialize;
 use settings::Settings as _;
 use std::collections::{HashMap, HashSet};
 use terminal_view::TerminalView;
-use ui::{AlertModal, prelude::*};
+use ui::{
+    AlertModal, ContextMenu, IconButton, IconButtonShape, IconName, IconSize, PopoverMenu, Tooltip,
+    prelude::*,
+};
 use ui_input::InputField;
 use workspace::{
     Item, Member, ModalView, MultiWorkspace, Pane, PaneAxis, PaneGroup, SerializableItem,
@@ -1478,6 +1481,59 @@ impl TerminalGroup {
             .get(&worker_id)
             .map(|metadata| metadata.status.clone())
     }
+
+    pub(crate) fn control_focus(
+        &mut self,
+        worker_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(pane) = self
+            .center
+            .panes()
+            .into_iter()
+            .find(|pane| pane.entity_id().as_u64() == worker_id)
+            .cloned()
+        else {
+            return false;
+        };
+        self.set_active_pane(&pane, window, cx);
+        true
+    }
+
+    pub(crate) fn control_tree(&self, cx: &App) -> Vec<(WorkerInfo, usize)> {
+        let workers = self.control_list(cx);
+        let mut worker_by_id = workers
+            .into_iter()
+            .map(|worker| (worker.id, worker))
+            .collect::<HashMap<_, _>>();
+        let worker_ids = worker_by_id.keys().copied().collect::<Vec<_>>();
+        let mut children = HashMap::<u64, Vec<u64>>::default();
+        let mut roots = Vec::new();
+        for worker_id in worker_ids {
+            let Some(worker) = worker_by_id.get(&worker_id) else {
+                continue;
+            };
+            if let Some(parent_id) = worker.parent_id.filter(|id| worker_by_id.contains_key(id)) {
+                children.entry(parent_id).or_default().push(worker_id);
+            } else {
+                roots.push(worker_id);
+            }
+        }
+
+        let mut tree = Vec::new();
+        let mut pending = roots.into_iter().rev().map(|id| (id, 0)).collect::<Vec<_>>();
+        while let Some((worker_id, depth)) = pending.pop() {
+            let Some(worker) = worker_by_id.remove(&worker_id) else {
+                continue;
+            };
+            tree.push((worker, depth));
+            if let Some(children) = children.get(&worker_id) {
+                pending.extend(children.iter().rev().map(|id| (*id, depth + 1)));
+            }
+        }
+        tree
+    }
 }
 
 impl Item for TerminalGroup {
@@ -2097,6 +2153,49 @@ impl Render for TerminalGroup {
                 .into_any_element()
         });
 
+        let worker_tree = self.control_tree(cx);
+        let group = cx.entity().downgrade();
+        let mission_control = PopoverMenu::new("mission-control")
+            .trigger_with_tooltip(
+                IconButton::new("mission-control", IconName::ListTree)
+                    .shape(IconButtonShape::Square)
+                    .icon_size(IconSize::XSmall),
+                Tooltip::text("Mission Control"),
+            )
+            .menu(move |window, cx| {
+                let group = group.upgrade()?;
+                let worker_tree = worker_tree.clone();
+                Some(ContextMenu::build(window, cx, move |menu, window, _| {
+                    let mut menu = menu.label("Mission Control");
+                    for (worker, depth) in &worker_tree {
+                        let marker = match worker.status.as_str() {
+                            "completed" => "✓",
+                            "failed" => "✕",
+                            "waiting" => "○",
+                            "starting" | "working" => "●",
+                            _ => "·",
+                        };
+                        let label = format!(
+                            "{}{} {}  {}",
+                            "  ".repeat(*depth),
+                            marker,
+                            worker.title,
+                            worker.status
+                        );
+                        let group = group.clone();
+                        let worker_id = worker.id;
+                        menu = menu.entry(
+                            label,
+                            None,
+                            window.handler_for(&group, move |group, window, cx| {
+                                group.control_focus(worker_id, window, cx);
+                            }),
+                        );
+                    }
+                    menu
+                }))
+            });
+
         div()
             .size_full()
             .relative()
@@ -2183,6 +2282,13 @@ impl Render for TerminalGroup {
                     .size_full()
                     .p(px(TerminalWorkspaceSettings::get_global(cx).gap / 2.))
                     .child(grid),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top_2()
+                    .right_2()
+                    .child(mission_control),
             )
             .children(drop_preview.map(|rect| {
                 // A filled region rather than an insertion line: it shows the
