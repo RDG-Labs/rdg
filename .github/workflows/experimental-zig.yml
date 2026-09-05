@@ -42,18 +42,23 @@ jobs:
           #!/usr/bin/env bash
           arguments=()
           for argument in "\$@"; do
-            if [[ "\$argument" == "--target=x86_64-unknown-linux-gnu" ]]; then
+            if [[ "\$argument" == "-fsanitize-undefined-strip-path-components=-1" ]]; then
+              continue
+            elif [[ "\$argument" == "--target=x86_64-unknown-linux-gnu" ]]; then
               argument="--target=x86_64-linux-gnu"
             fi
             arguments+=("\$argument")
           done
           exec "$(command -v zig)" cc "\${arguments[@]}"
           EOF
+          # Zig 0.16 turns this path-only UBSan flag into instrumentation; AWS-LC then needs a runtime Rust does not link.
           cat > "$RUNNER_TEMP/zig-cxx" <<EOF
           #!/usr/bin/env bash
           arguments=()
           for argument in "\$@"; do
-            if [[ "\$argument" == "--target=x86_64-unknown-linux-gnu" ]]; then
+            if [[ "\$argument" == "-fsanitize-undefined-strip-path-components=-1" ]]; then
+              continue
+            elif [[ "\$argument" == "--target=x86_64-unknown-linux-gnu" ]]; then
               argument="--target=x86_64-linux-gnu"
             fi
             arguments+=("\$argument")
