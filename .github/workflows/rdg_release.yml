@@ -131,9 +131,60 @@ jobs:
             echo "tag=$tag"
           } >> "$GITHUB_OUTPUT"
 
+  prepare_release:
+    name: Bump version on main
+    needs: validate_tag
+    if: needs.validate_tag.result == 'success'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    outputs:
+      commit: ${{ steps.commit.outputs.commit }}
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
+
+      - name: Bump version and push main
+        id: commit
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            python3 - <<'PY'
+            import re
+            from pathlib import Path
+
+            version = "${{ needs.validate_tag.outputs.version }}"
+            for filename in ("crates/rdg/Cargo.toml", "Cargo.lock"):
+                path = Path(filename)
+                content = path.read_text()
+                pattern = r'(?m)(^name = "rdg"\nversion = ")[^"]+("$)'
+                updated, count = re.subn(pattern, rf'\g<1>{version}\g<2>', content)
+                if count != 1:
+                    raise SystemExit(f"expected one rdg package version in {filename}, found {count}")
+                path.write_text(updated)
+            PY
+
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add crates/rdg/Cargo.toml Cargo.lock
+            git commit -m "Bump RDG version to $RELEASE_VERSION"
+            git push origin HEAD:main
+            git push origin "HEAD:refs/heads/release/v$RELEASE_VERSION"
+          fi
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   build_linux:
     name: Build Linux x86_64
-    needs: validate_tag
+    needs:
+      - validate_tag
+      - prepare_release
+    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success'
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     env:
@@ -144,6 +195,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: ${{ needs.prepare_release.outputs.commit }}
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
@@ -183,7 +236,10 @@ jobs:
 
   build_macos:
     name: Build macOS ${{ matrix.arch }}
-    needs: validate_tag
+    needs:
+      - validate_tag
+      - prepare_release
+    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -204,6 +260,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: ${{ needs.prepare_release.outputs.commit }}
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
@@ -294,7 +352,10 @@ jobs:
 
   build_windows:
     name: Build Windows x86_64
-    needs: validate_tag
+    needs:
+      - validate_tag
+      - prepare_release
+    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success'
     runs-on: windows-2022
     timeout-minutes: 180
     env:
@@ -305,6 +366,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: ${{ needs.prepare_release.outputs.commit }}
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
@@ -348,8 +411,9 @@ jobs:
     name: Publish Linux artifact
     needs:
       - validate_tag
+      - prepare_release
       - build_linux
-    if: needs.build_linux.result == 'success'
+    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success' && needs.build_linux.result == 'success'
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -359,6 +423,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.validate_tag.outputs.tag }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+      RELEASE_TARGET: ${{ needs.prepare_release.outputs.commit }}
     steps:
       - name: Download Linux artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -381,7 +446,7 @@ jobs:
             if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
               release_options+=(--verify-tag)
             else
-              release_options+=(--target "$GITHUB_SHA")
+              release_options+=(--target "$RELEASE_TARGET")
             fi
             [[ "$RELEASE_CHANNEL" == "preview" ]] && release_options+=(--prerelease)
             gh release create "$tag" --repo "$repo" "$asset" "${release_options[@]}"
@@ -391,8 +456,9 @@ jobs:
     name: Publish Windows artifact
     needs:
       - validate_tag
+      - prepare_release
       - build_windows
-    if: needs.build_windows.result == 'success'
+    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success' && needs.build_windows.result == 'success'
     runs-on: ubuntu-22.04
     permissions:
       contents: write
@@ -402,6 +468,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.validate_tag.outputs.tag }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+      RELEASE_TARGET: ${{ needs.prepare_release.outputs.commit }}
     steps:
       - name: Download Windows artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -424,7 +491,7 @@ jobs:
             if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
               release_options+=(--verify-tag)
             else
-              release_options+=(--target "$GITHUB_SHA")
+              release_options+=(--target "$RELEASE_TARGET")
             fi
             [[ "$RELEASE_CHANNEL" == "preview" ]] && release_options+=(--prerelease)
             gh release create "$tag" --repo "$repo" "$asset" "${release_options[@]}"
@@ -434,8 +501,9 @@ jobs:
     name: Sign and publish macOS artifacts
     needs:
       - validate_tag
+      - prepare_release
       - build_macos
-    if: needs.build_macos.result == 'success'
+    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success' && needs.build_macos.result == 'success'
     runs-on: macos-14
     timeout-minutes: 180
     permissions:
@@ -448,6 +516,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.validate_tag.outputs.tag }}
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+      RELEASE_TARGET: ${{ needs.prepare_release.outputs.commit }}
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
       MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
@@ -457,6 +526,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: ${{ needs.prepare_release.outputs.commit }}
 
       - name: Download macOS artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -535,7 +606,7 @@ jobs:
             if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
               release_options+=(--verify-tag)
             else
-              release_options+=(--target "$GITHUB_SHA")
+              release_options+=(--target "$RELEASE_TARGET")
             fi
             [[ "$RELEASE_CHANNEL" == "preview" ]] && release_options+=(--prerelease)
             gh release create "$tag" --repo "$repo" "${assets[@]}" "${release_options[@]}"
