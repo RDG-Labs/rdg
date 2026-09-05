@@ -1,0 +1,57 @@
+name: experimental-zig-build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  ZIG_VERSION: 0.16.0
+
+jobs:
+  build:
+    name: Build Linux with Zig
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        with:
+          cache-targets: true
+
+      - name: Install Linux dependencies
+        run: ./script/linux
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@abea47f85e598557f500fa1fd2ab7464fcb39406 # v2.2.1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Configure Zig C toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          zig version
+          cat > "$RUNNER_TEMP/zig-cc" <<EOF
+          #!/usr/bin/env bash
+          exec "$(command -v zig)" cc "$@"
+          EOF
+          cat > "$RUNNER_TEMP/zig-cxx" <<EOF
+          #!/usr/bin/env bash
+          exec "$(command -v zig)" c++ "$@"
+          EOF
+          chmod +x "$RUNNER_TEMP/zig-cc" "$RUNNER_TEMP/zig-cxx"
+          {
+            echo "CC=$RUNNER_TEMP/zig-cc"
+            echo "CXX=$RUNNER_TEMP/zig-cxx"
+            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=$RUNNER_TEMP/zig-cc"
+          } >> "$GITHUB_ENV"
+
+      - name: Build Rdg
+        run: cargo build --release --package rdg --target x86_64-unknown-linux-gnu
