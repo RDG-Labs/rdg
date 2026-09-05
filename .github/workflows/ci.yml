@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   orchestrate:
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     outputs:
       changed_packages: ${{ steps.filter.outputs.changed_packages }}
       run_tests: ${{ steps.filter.outputs.run_tests }}
@@ -97,7 +97,7 @@ jobs:
     name: Clippy
     needs: orchestrate
     if: needs.orchestrate.outputs.run_tests == 'true'
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 45
     env:
       CC: clang
@@ -133,7 +133,7 @@ jobs:
     name: Workspace tests
     needs: orchestrate
     if: needs.orchestrate.outputs.run_tests == 'true'
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 180
     env:
       CC: clang

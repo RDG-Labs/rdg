@@ -35,7 +35,7 @@ jobs:
       && github.event.workflow_run.head_repository.full_name == github.repository
       && contains(fromJSON('["issues","issue_comment","pull_request","pull_request_target","schedule","workflow_dispatch"]'), github.event.workflow_run.event)
       && contains(fromJSON('["failure","timed_out","startup_failure"]'), github.event.workflow_run.conclusion)
-    runs-on: namespace-profile-2x4-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
 
     steps:
       - name: Build Slack message payload
