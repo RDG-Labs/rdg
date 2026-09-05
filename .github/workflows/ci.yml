@@ -50,10 +50,12 @@ jobs:
           fi
           CHANGED_FILES="$(git diff --name-only "$COMPARE_REV" "$GITHUB_SHA")"
 
-          # A fresh toolchain/cargo/CI config or direct push always runs the full suite.
-          if [ -z "$GITHUB_BASE_REF" ]; then
-            echo "Not a PR, running full test suite"
+          # Manual dispatch and direct pushes to main/release always run the full suite.
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] || [ -z "$GITHUB_BASE_REF" ]; then
+            echo "Manual dispatch or push to a release branch, running full test suite"
             echo "changed_packages=" >> "$GITHUB_OUTPUT"
+            echo "run_tests=true" >> "$GITHUB_OUTPUT"
+            exit 0
           elif echo "$CHANGED_FILES" | grep -qP '^(rust-toolchain\.toml|\.cargo/|\.github/|Cargo\.(toml|lock)$)'; then
             echo "Toolchain, cargo config, or root Cargo files changed, will run all tests"
             echo "changed_packages=" >> "$GITHUB_OUTPUT"
