@@ -52,8 +52,6 @@ const REMOTE_SERVER_CACHE_LIMIT: usize = 5;
 /// Repository whose GitHub Releases drive Rdg's auto-update.
 const RDG_RELEASE_REPO: &str = "RDG-Labs/rdg";
 
-// Kept as a named constant for sccache validation runs.
-
 actions!(
     auto_update,
     [
