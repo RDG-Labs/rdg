@@ -25,13 +25,7 @@ brew install --cask zed@preview
 
 ### Windows
 
-Get the latest stable builds via [the download page](https://zed.dev/download). If you want to download our preview build, you can find it on its [releases page](https://zed.dev/releases/preview). After the first manual installation, Zed will periodically check for install updates.
-
-Additionally, you can install Zed using winget:
-
-```sh
-winget install -e --id ZedIndustries.Zed
-```
+Download the latest stable build from the [RDG releases page](https://github.com/RDG-Labs/rdg/releases). You can install either the portable `rdg-windows-x86_64.zip` or the `.exe` installer, which supports silent auto-updates. After installation, Rdg periodically checks for updates.
 
 ### Linux
 

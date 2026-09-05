@@ -374,36 +374,70 @@ jobs:
         with:
           cache-targets: true
 
-      - name: Build Rdg
-        run: cargo build --release --package rdg
+      - name: Build Rdg and update helper
+        run: cargo build --release --package rdg --package auto_update_helper
 
-      - name: Package Rdg
+      - name: Package Rdg (portable zip and Inno installer)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $packageDir = "dist\rdg"
-          New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
-          Copy-Item "target\release\rdg.exe" "$packageDir\rdg.exe"
-          Copy-Item "LICENSE-APACHE" "$packageDir\LICENSE-APACHE"
-          Copy-Item "LICENSE-GPL" "$packageDir\LICENSE-GPL"
+          $stage = "stage\rdg"
+          New-Item -ItemType Directory -Path "$stage\tools" -Force | Out-Null
 
-          $iconName = if ($env:RELEASE_CHANNEL -eq "stable") { "app-icon.ico" } else { "app-icon-preview.ico" }
-          Copy-Item "crates\rdg\resources\windows\$iconName" "$packageDir\Rdg.ico"
+          Copy-Item "target\release\rdg.exe" "$stage\rdg.exe"
+          Copy-Item "target\release\auto_update_helper.exe" "$stage\tools\auto_update_helper.exe"
+          Copy-Item "LICENSE-APACHE" "$stage\LICENSE-APACHE"
+          Copy-Item "LICENSE-GPL" "$stage\LICENSE-GPL"
 
           foreach ($file in @("conpty.dll", "OpenConsole.exe")) {
               $source = "target\$file"
               if (Test-Path $source) {
-                  Copy-Item $source "$packageDir\$file"
+                  Copy-Item $source "$stage\$file"
               }
           }
 
-          Compress-Archive -Path "$packageDir\*" -DestinationPath "rdg-windows-x86_64.zip" -Force
+          $iconName = if ($env:RELEASE_CHANNEL -eq "stable") { "app-icon.ico" } else { "app-icon-preview.ico" }
+          Copy-Item "crates\rdg\resources\windows\$iconName" "$stage\Rdg.ico"
+          Copy-Item "crates\rdg\resources\windows\$iconName" "$stage\app-icon.ico"
 
-      - name: Upload Windows artifact
+          # Portable zip.
+          Compress-Archive -Path "$stage\*" -DestinationPath "rdg-windows-x86_64.zip" -Force
+
+          # Inno Setup installer (silent-updatable).
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          $appId = if ($env:RELEASE_CHANNEL -eq "stable") { "{{E6A1B2C3-4D5E-4F6A-9B8C-7D6E5F4A3B2C}}" } else { "{{F7B2C3D4-5E6F-4A7B-9C8D-8E7F6A5B4C3D}}" }
+          $appName = if ($env:RELEASE_CHANNEL -eq "stable") { "Rdg" } else { "Rdg Preview" }
+          $mutex = if ($env:RELEASE_CHANNEL -eq "stable") { "Rdg-Editor-Stable-Instance-Mutex" } else { "Rdg-Editor-Preview-Instance-Mutex" }
+          $appUserId = if ($env:RELEASE_CHANNEL -eq "stable") { "RdgIndustries.Rdg" } else { "RdgIndustries.Rdg.Preview" }
+
+          & $iscc "crates\rdg\resources\windows\rdg-install.iss" `
+            "/dAppId=$appId" "/dAppName=$appName" "/dAppDisplayName=$appName" `
+            "/dAppSetupName=rdg-windows-x86_64" "/dAppMutex=$mutex" `
+            "/dAppUserId=$appUserId" "/dVersion=$env:RELEASE_VERSION" `
+            "/dOutputDir=$env:GITHUB_WORKSPACE" "/dResourcesDir=$stage" "/dSourceDir=$env:GITHUB_WORKSPACE"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path "rdg-windows-x86_64.exe")) { throw "Inno Setup did not produce rdg-windows-x86_64.exe" }
+
+      - name: Upload Windows artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          foreach ($file in @("rdg-windows-x86_64.zip", "rdg-windows-x86_64.exe")) {
+            if (-not (Test-Path $file)) { throw "Missing expected artifact $file" }
+          }
+      - name: Upload Windows zip
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: rdg-windows-x86_64
           path: rdg-windows-x86_64.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rdg-windows-x86_64-installer
+          path: rdg-windows-x86_64.exe
           if-no-files-found: error
           retention-days: 30
 
@@ -470,10 +504,16 @@ jobs:
       RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
       RELEASE_TARGET: ${{ needs.prepare_release.outputs.commit }}
     steps:
-      - name: Download Windows artifact
+      - name: Download Windows artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: rdg-windows-x86_64
+          path: release-assets
+
+      - name: Download Windows installer
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: rdg-windows-x86_64-installer
           path: release-assets
 
       - name: Create or update release
@@ -483,9 +523,15 @@ jobs:
           set -euo pipefail
           tag="$RELEASE_TAG"
           repo="$GITHUB_REPOSITORY"
-          asset="release-assets/rdg-windows-x86_64.zip"
+          assets=("release-assets/rdg-windows-x86_64.zip" "release-assets/rdg-windows-x86_64.exe")
+          for asset in "${assets[@]}"; do
+            if [[ ! -f "$asset" ]]; then
+              echo "missing expected asset: $asset" >&2
+              exit 1
+            fi
+          done
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
-            gh release upload "$tag" --repo "$repo" "$asset" --clobber
+            gh release upload "$tag" --repo "$repo" "${assets[@]}" --clobber
           else
             release_options=(--title "Rdg ${tag#v}" --generate-notes)
             if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
@@ -494,7 +540,7 @@ jobs:
               release_options+=(--target "$RELEASE_TARGET")
             fi
             [[ "$RELEASE_CHANNEL" == "preview" ]] && release_options+=(--prerelease)
-            gh release create "$tag" --repo "$repo" "$asset" "${release_options[@]}"
+            gh release create "$tag" --repo "$repo" "${assets[@]}" "${release_options[@]}"
           fi
 
   publish_macos:

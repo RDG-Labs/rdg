@@ -342,7 +342,7 @@ impl InstallerDir {
     async fn new() -> Result<Self> {
         let installer_dir = std::env::current_exe()?
             .parent()
-            .context("No parent dir for Zed.exe")?
+            .context("No parent dir for rdg.exe")?
             .join("updates");
         if smol::fs::metadata(&installer_dir).await.is_ok() {
             smol::fs::remove_dir_all(&installer_dir).await?;
@@ -973,7 +973,7 @@ fn release_asset_name(os: &str, arch: &str, _channel: ReleaseChannel) -> String 
     let extension = match os {
         "macos" => ".dmg",
         "linux" => ".tar.gz",
-        "windows" => ".zip",
+        "windows" => ".exe",
         unsupported => panic!("unsupported OS for release asset: {unsupported}"),
     };
     format!("rdg-{os}-{arch}{extension}")
@@ -1327,7 +1327,7 @@ async fn cleanup_stale_installer_dirs() {
 async fn cleanup_windows() -> Result<()> {
     let parent = std::env::current_exe()?
         .parent()
-        .context("No parent dir for Zed.exe")?
+        .context("No parent dir for rdg.exe")?
         .to_owned();
 
     // keep in sync with crates/auto_update_helper/src/updater.rs
@@ -1338,14 +1338,26 @@ async fn cleanup_windows() -> Result<()> {
     Ok(())
 }
 
-async fn install_release_windows(_downloaded_installer: &Path) -> Result<Option<PathBuf>> {
-    // Rdg ships a portable .zip on Windows rather than an Inno Setup installer,
-    // so auto-install is not yet wired up here. Downloading and reporting the
-    // update still works; this surfaces a clear error instead of silently
-    // corrupting the install.
-    anyhow::bail!(
-        "Windows auto-install is not supported yet; download the latest release from the releases page."
+async fn install_release_windows(downloaded_installer: &Path) -> Result<Option<PathBuf>> {
+    let mut cmd = new_command(downloaded_installer);
+    cmd.arg("/verysilent")
+        .arg("/update=true")
+        .arg("/MERGETASKS=!desktopicon");
+    let output = cmd.output().await?;
+    anyhow::ensure!(
+        output.status.success(),
+        "failed to start installer: {:?}",
+        String::from_utf8_lossy(&output.stderr)
     );
+    // We return the path to the update helper program, because it will
+    // perform the final steps of the update process, copying the new binary,
+    // deleting the old one, and launching the new binary.
+    let helper_path = std::env::current_exe()?
+        .parent()
+        .context("No parent dir for rdg.exe")?
+        .join("tools")
+        .join("auto_update_helper.exe");
+    Ok(Some(helper_path))
 }
 
 pub async fn finalize_auto_update_on_quit() {
@@ -1936,7 +1948,7 @@ mod tests {
         );
         assert_eq!(
             release_asset_name("windows", "x86_64", ReleaseChannel::Stable),
-            "rdg-windows-x86_64.zip"
+            "rdg-windows-x86_64.exe"
         );
     }
 

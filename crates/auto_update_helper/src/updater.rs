@@ -164,47 +164,20 @@ impl Job {
 }
 
 #[cfg(not(test))]
-pub(crate) static JOBS: LazyLock<[Job; 22]> = LazyLock::new(|| {
+pub(crate) static JOBS: LazyLock<[Job; 8]> = LazyLock::new(|| {
     fn p(value: &str) -> &Path {
         Path::new(value)
     }
     [
-        // Move old files
-        // Not deleting because installing new files can fail
+        // Move old files aside without deleting them, so we can roll back if
+        // installing the new files fails.
         Job::mkdir(p("old")),
-        Job::move_file(p("Zed.exe"), p("old\\Zed.exe")),
-        Job::mkdir(p("old\\bin")),
-        Job::move_file(p("bin\\Zed.exe"), p("old\\bin\\Zed.exe")),
-        Job::move_file(p("bin\\zed"), p("old\\bin\\zed")),
+        Job::move_file(p("rdg.exe"), p("old\\rdg.exe")),
+        Job::move_if_exists(p("conpty.dll"), p("old\\conpty.dll")),
         //
-        // TODO: remove after a few weeks once everyone is on the new version and this file never exists
-        Job::move_if_exists(p("OpenConsole.exe"), p("old\\OpenConsole.exe")),
-        Job::mkdir(p("old\\x64")),
-        Job::mkdir(p("old\\arm64")),
-        Job::move_if_exists(p("x64\\OpenConsole.exe"), p("old\\x64\\OpenConsole.exe")),
-        Job::move_if_exists(
-            p("arm64\\OpenConsole.exe"),
-            p("old\\arm64\\OpenConsole.exe"),
-        ),
-        //
-        Job::move_file(p("conpty.dll"), p("old\\conpty.dll")),
-        // Copy new files
-        Job::move_file(p("install\\Zed.exe"), p("Zed.exe")),
-        Job::move_file(p("install\\bin\\Zed.exe"), p("bin\\Zed.exe")),
-        Job::move_file(p("install\\bin\\zed"), p("bin\\zed")),
-        //
-        Job::mkdir_if_exists(p("x64"), p("install\\x64")),
-        Job::mkdir_if_exists(p("arm64"), p("install\\arm64")),
-        Job::move_if_exists(
-            p("install\\x64\\OpenConsole.exe"),
-            p("x64\\OpenConsole.exe"),
-        ),
-        Job::move_if_exists(
-            p("install\\arm64\\OpenConsole.exe"),
-            p("arm64\\OpenConsole.exe"),
-        ),
-        //
-        Job::move_file(p("install\\conpty.dll"), p("conpty.dll")),
+        // Copy new files over.
+        Job::move_file(p("install\\rdg.exe"), p("rdg.exe")),
+        Job::move_if_exists(p("install\\conpty.dll"), p("conpty.dll")),
         // Cleanup installer and updates folder
         Job::rmdir_nofail(p("updates")),
         Job::rmdir_nofail(p("install")),
@@ -278,12 +251,7 @@ pub(crate) static JOBS: LazyLock<[Job; 9]> = LazyLock::new(|| {
 /// the retry logic.
 fn release_file_handles(app_dir: &Path) -> Result<()> {
     // Files that commonly get locked by Explorer or other processes
-    let files_to_release = [
-        app_dir.join("Zed.exe"),
-        app_dir.join("bin\\Zed.exe"),
-        app_dir.join("bin\\zed"),
-        app_dir.join("conpty.dll"),
-    ];
+    let files_to_release = [app_dir.join("rdg.exe"), app_dir.join("conpty.dll")];
 
     log::info!("Attempting to release file handles using Restart Manager...");
 
@@ -365,7 +333,7 @@ fn release_file_handles(app_dir: &Path) -> Result<()> {
 
 #[allow(clippy::disallowed_methods, reason = "doesn't run in the main binary")]
 fn zed_launch_command(app_dir: &Path, launch_arguments: &[OsString]) -> std::process::Command {
-    let mut command = std::process::Command::new(app_dir.join("Zed.exe"));
+    let mut command = std::process::Command::new(app_dir.join("rdg.exe"));
     command.args(launch_arguments);
     command
 }
@@ -458,13 +426,13 @@ mod test {
     fn test_zed_launch_command_preserves_arguments() {
         let arguments = vec![
             OsString::from("--user-data-dir"),
-            OsString::from(r"C:\Zed Data"),
+            OsString::from(r"C:\Rdg Data"),
         ];
-        let command = zed_launch_command(Path::new(r"C:\Program Files\Zed"), &arguments);
+        let command = zed_launch_command(Path::new(r"C:\Program Files\Rdg"), &arguments);
 
         assert_eq!(
             command.get_program(),
-            Path::new(r"C:\Program Files\Zed\Zed.exe").as_os_str()
+            Path::new(r"C:\Program Files\Rdg\rdg.exe").as_os_str()
         );
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
