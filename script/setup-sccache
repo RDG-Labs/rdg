@@ -74,14 +74,14 @@ install_sccache() {
 }
 
 configure_sccache() {
-    if [[ -z "${R2_ACCOUNT_ID:-}" ]]; then
-        echo "R2_ACCOUNT_ID not set, skipping sccache configuration"
+    if [[ -z "${SCCACHE_ENDPOINT:-}" || -z "${SCCACHE_ACCESS_KEY_ID:-}" ]]; then
+        echo "SCCACHE_ENDPOINT or SCCACHE_ACCESS_KEY_ID not set, skipping sccache configuration"
         return
     fi
 
-    echo "Configuring sccache with Cloudflare R2..."
+    echo "Configuring sccache with S3-compatible backend..."
 
-    local bucket="${SCCACHE_BUCKET:-sccache-zed}"
+    local bucket="${SCCACHE_BUCKET:-rdg-sccache}"
     local key_prefix="${SCCACHE_KEY_PREFIX:-sccache/}"
     local base_dir="${GITHUB_WORKSPACE:-$(pwd)}"
 
@@ -90,13 +90,13 @@ configure_sccache() {
     local sccache_bin="${SCCACHE_DIR}/sccache"
 
     # Set in current process
-    export SCCACHE_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+    export SCCACHE_ENDPOINT="${SCCACHE_ENDPOINT}"
     export SCCACHE_BUCKET="${bucket}"
-    export SCCACHE_REGION="auto"
+    export SCCACHE_REGION="${SCCACHE_REGION:-auto}"
     export SCCACHE_S3_KEY_PREFIX="${key_prefix}"
     export SCCACHE_BASEDIRS="${base_dir}"
-    export AWS_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID}"
-    export AWS_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY}"
+    export AWS_ACCESS_KEY_ID="${SCCACHE_ACCESS_KEY_ID}"
+    export AWS_SECRET_ACCESS_KEY="${SCCACHE_SECRET_ACCESS_KEY}"
     export RUSTC_WRAPPER="${sccache_bin}"
 
     # Also write to GITHUB_ENV for subsequent steps
@@ -113,7 +113,7 @@ configure_sccache() {
         } >> "$GITHUB_ENV"
     fi
 
-    echo "✓ sccache configured with Cloudflare R2 (bucket: ${bucket})"
+    echo "✓ sccache configured with ${SCCACHE_ENDPOINT} (bucket: ${bucket})"
 }
 
 show_config() {

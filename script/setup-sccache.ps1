@@ -86,8 +86,8 @@ function Install-Sccache {
 }
 
 function Configure-Sccache {
-    if (-not $env:R2_ACCOUNT_ID) {
-        Write-Host "R2_ACCOUNT_ID not set, skipping sccache configuration"
+    if (-not $env:SCCACHE_ENDPOINT -or -not $env:SCCACHE_ACCESS_KEY_ID) {
+        Write-Host "SCCACHE_ENDPOINT or SCCACHE_ACCESS_KEY_ID not set, skipping sccache configuration"
         return
     }
 
@@ -99,9 +99,9 @@ function Configure-Sccache {
         exit 1
     }
 
-    Write-Host "Configuring sccache with Cloudflare R2..."
+    Write-Host "Configuring sccache with S3-compatible backend..."
 
-    $bucket = if ($env:SCCACHE_BUCKET) { $env:SCCACHE_BUCKET } else { "sccache-zed" }
+    $bucket = if ($env:SCCACHE_BUCKET) { $env:SCCACHE_BUCKET } else { "rdg-sccache" }
     $keyPrefix = if ($env:SCCACHE_KEY_PREFIX) { $env:SCCACHE_KEY_PREFIX } else { "sccache/" }
     $baseDir = if ($env:GITHUB_WORKSPACE) { $env:GITHUB_WORKSPACE } else { (Get-Location).Path }
 
@@ -110,13 +110,13 @@ function Configure-Sccache {
     $sccacheBin = (Get-Command sccache).Source
 
     # Set in current process
-    $env:SCCACHE_ENDPOINT = "https://$($env:R2_ACCOUNT_ID).r2.cloudflarestorage.com"
+    $env:SCCACHE_ENDPOINT = $env:SCCACHE_ENDPOINT
     $env:SCCACHE_BUCKET = $bucket
-    $env:SCCACHE_REGION = "auto"
+    $env:SCCACHE_REGION = if ($env:SCCACHE_REGION) { $env:SCCACHE_REGION } else { "auto" }
     $env:SCCACHE_S3_KEY_PREFIX = $keyPrefix
     $env:SCCACHE_BASEDIRS = $baseDir
-    $env:AWS_ACCESS_KEY_ID = $env:R2_ACCESS_KEY_ID
-    $env:AWS_SECRET_ACCESS_KEY = $env:R2_SECRET_ACCESS_KEY
+    $env:AWS_ACCESS_KEY_ID = $env:SCCACHE_ACCESS_KEY_ID
+    $env:AWS_SECRET_ACCESS_KEY = $env:SCCACHE_SECRET_ACCESS_KEY
     $env:RUSTC_WRAPPER = $sccacheBin
 
     # Also write to GITHUB_ENV for subsequent steps

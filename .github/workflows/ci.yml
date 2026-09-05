@@ -3,11 +3,11 @@ name: ci
 on:
   pull_request:
     branches:
-      - main
+      - "main"
       - "release/**"
   push:
     branches:
-      - main
+      - "main"
       - "release/**"
   workflow_dispatch:
 
@@ -17,24 +17,94 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
+  CARGO_INCREMENTAL: "0"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  clippy:
-    name: Clippy
+  orchestrate:
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    outputs:
+      changed_packages: ${{ steps.filter.outputs.changed_packages }}
+      run_tests: ${{ steps.filter.outputs.run_tests }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
         with:
-          cache-targets: true
+          clean: false
+          fetch-depth: ${{ github.ref == 'refs/heads/main' && 2 || 350 }}
+
+      - id: filter
+        name: Calculate changed packages
+        run: |
+          set -euo pipefail
+          if [ -z "$GITHUB_BASE_REF" ]; then
+            echo "Not in a PR context (i.e., push to main/release)"
+            COMPARE_REV="$(git rev-parse HEAD~1)"
+          else
+            echo "In a PR context comparing to pull_request.base.ref"
+            git fetch origin "$GITHUB_BASE_REF" --depth=350
+            COMPARE_REV="$(git merge-base "origin/${GITHUB_BASE_REF}" HEAD)"
+          fi
+          CHANGED_FILES="$(git diff --name-only "$COMPARE_REV" "$GITHUB_SHA")"
+
+          # A fresh toolchain/cargo/CI config or direct push always runs the full suite.
+          if [ -z "$GITHUB_BASE_REF" ]; then
+            echo "Not a PR, running full test suite"
+            echo "changed_packages=" >> "$GITHUB_OUTPUT"
+          elif echo "$CHANGED_FILES" | grep -qP '^(rust-toolchain\.toml|\.cargo/|\.github/|Cargo\.(toml|lock)$)'; then
+            echo "Toolchain, cargo config, or root Cargo files changed, will run all tests"
+            echo "changed_packages=" >> "$GITHUB_OUTPUT"
+          else
+            CHANGED_DIRS=$(echo "$CHANGED_FILES" | grep -oP '^crates/\K[^/]+' | sort -u || true)
+            DIR_TO_PKG=$(cargo metadata --format-version=1 --no-deps 2>/dev/null | \
+              jq -r '.packages[] | select(.manifest_path | test("crates/")) | "\(.manifest_path | capture("crates/(?<dir>[^/]+)") | .dir)=\(.name)"')
+
+            FILE_CHANGED_PKGS=""
+            for dir in $CHANGED_DIRS; do
+              pkg=$(echo "$DIR_TO_PKG" | grep "^${dir}=" | cut -d= -f2 | head -1 || true)
+              if [ -n "$pkg" ]; then
+                FILE_CHANGED_PKGS=$(printf '%s\n%s' "$FILE_CHANGED_PKGS" "$pkg")
+              fi
+            done
+            FILE_CHANGED_PKGS=$(echo "$FILE_CHANGED_PKGS" | grep -v '^$' | sort -u || true)
+
+            if [ -z "$FILE_CHANGED_PKGS" ]; then
+              echo "No package changes detected, will run all tests"
+              echo "changed_packages=" >> "$GITHUB_OUTPUT"
+            else
+              FILTERSET=$(echo "$FILE_CHANGED_PKGS" | sed 's/.*/rdeps(&)/' | tr '\n' '|' | sed 's/|$//')
+              echo "Changed packages filterset: $FILTERSET"
+              echo "changed_packages=$FILTERSET" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+          check_pattern() {
+            local output_name="$1"
+            local pattern="$2"
+            local grep_arg="$3"
+            echo "$CHANGED_FILES" | grep "$grep_arg" "$pattern" && \
+              echo "${output_name}=true" >> "$GITHUB_OUTPUT" || \
+              echo "${output_name}=false" >> "$GITHUB_OUTPUT"
+          }
+          check_pattern "run_tests" '^(docs/|\.github/|extensions/)' -qvP
+
+  clippy:
+    name: Clippy
+    needs: orchestrate
+    if: needs.orchestrate.outputs.run_tests == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          clean: false
 
       - name: Install Linux dependencies
         run: ./script/linux
@@ -42,21 +112,35 @@ jobs:
       - name: Install WASI SDK
         run: ./script/download-wasi-sdk
 
-      - name: Run Clippy
+      - name: Setup sccache
+        run: ./script/setup-sccache
+        env:
+          SCCACHE_ENDPOINT: ${{ secrets.SCCACHE_ENDPOINT }}
+          SCCACHE_BUCKET: ${{ secrets.SCCACHE_BUCKET }}
+          SCCACHE_REGION: ${{ secrets.SCCACHE_REGION }}
+          SCCACHE_ACCESS_KEY_ID: ${{ secrets.SCCACHE_ACCESS_KEY_ID }}
+          SCCACHE_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_SECRET_ACCESS_KEY }}
+
+      - name: Run clippy
         run: ./script/clippy
+
+      - name: Show sccache stats
+        run: sccache --show-stats || true
 
   tests:
     name: Workspace tests
+    needs: orchestrate
+    if: needs.orchestrate.outputs.run_tests == 'true'
     runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    timeout-minutes: 180
+    env:
+      CC: clang
+      CXX: clang++
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
         with:
-          cache-targets: true
+          clean: false
 
       - name: Install Linux dependencies
         run: ./script/linux
@@ -64,12 +148,38 @@ jobs:
       - name: Install WASI SDK
         run: ./script/download-wasi-sdk
 
-      - name: Run tests
-        uses: ./.github/actions/run_tests
+      - name: Install nextest
+        uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # 2.84.0
         with:
+          tool: nextest
+
+      - name: Limit target directory size
+        shell: bash -euxo pipefail {0}
+        run: script/clear-target-dir-if-larger-than 350 200
+
+      - name: Setup sccache
+        run: ./script/setup-sccache
+        env:
+          SCCACHE_ENDPOINT: ${{ secrets.SCCACHE_ENDPOINT }}
+          SCCACHE_BUCKET: ${{ secrets.SCCACHE_BUCKET }}
+          SCCACHE_REGION: ${{ secrets.SCCACHE_REGION }}
+          SCCACHE_ACCESS_KEY_ID: ${{ secrets.SCCACHE_ACCESS_KEY_ID }}
+          SCCACHE_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_SECRET_ACCESS_KEY }}
+
+      - name: Run tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          filter="${{ needs.orchestrate.outputs.changed_packages }}"
           # The rdg binary's GPUI integration tests require an interactive app lifecycle;
           # release builds validate the binary on each version tag.
-          filter-expr: "not package(rdg)"
+          base_filter="not package(rdg)"
+          if [ -n "$filter" ]; then
+            # Run the changed packages and their dependents, minus the interactive rdg binary.
+            cargo nextest run --workspace --no-fail-fast --failure-output immediate-final -E "$filter and ($base_filter)"
+          else
+            cargo nextest run --workspace --no-fail-fast --failure-output immediate-final -E "$base_filter"
+          fi
 
-
-  # Platform builds run in rdg_release.yml after the release tag is validated.
+      - name: Show sccache stats
+        run: sccache --show-stats || true
