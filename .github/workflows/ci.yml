@@ -187,6 +187,3 @@ jobs:
           # Report sccache stats in the same step (same daemon) so we can see the
           # real cache hit rate for the test build rather than a fresh server.
           sccache --show-stats || true
-
-      - name: Show sccache stats
-        run: sccache --show-stats || true
