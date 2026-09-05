@@ -48,7 +48,7 @@ Zed includes a command-line tool for opening files and projects from Terminal. T
 2. Open the command palette with `Cmd+Shift+P`
 3. Run {#action cli::InstallCliBinary}
 
-This creates a `zed` command in `/usr/local/bin`. You can then open files and folders:
+This creates a `rdg` command in `/usr/local/bin`. You can then open files and folders:
 
 ```sh
 zed .                    # Open current folder
@@ -75,7 +75,7 @@ rm -rf ~/Library/Saved\ Application\ State/dev.zed.Zed.savedState
 If you installed the CLI, remove it with:
 
 ```sh
-rm /usr/local/bin/zed
+rm /usr/local/bin/rdg
 ```
 
 ## Troubleshooting
@@ -106,7 +106,7 @@ If the `zed` command isn't available after installation:
 
 ### Can't install CLI {#cant-install-cli}
 
-{#action cli::InstallCliBinary} writes a `zed` symlink to `/usr/local/bin`, which requires administrator privileges. If your macOS account isn't in the `admin` group, Zed can't create that symlink and will report that it can't install the CLI automatically.
+{#action cli::InstallCliBinary} writes a `rdg` symlink to `/usr/local/bin`, which requires administrator privileges. If your macOS account isn't in the `admin` group, Zed can't create that symlink and will report that it can't install the CLI automatically.
 
 Instead, you can add an alias pointing to the `cli` binary bundled inside the app. The path depends on where Zed is installed:
 
