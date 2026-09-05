@@ -52,55 +52,6 @@ const REMOTE_SERVER_CACHE_LIMIT: usize = 5;
 /// Repository whose GitHub Releases drive Rdg's auto-update.
 const RDG_RELEASE_REPO: &str = "RDG-Labs/rdg";
 
-#[cfg(target_os = "linux")]
-fn linux_rsync_install_hint() -> &'static str {
-    let os_release = match std::fs::read_to_string("/etc/os-release") {
-        Ok(os_release) => os_release,
-        Err(_) => return "Please install rsync using your package manager",
-    };
-
-    let mut distribution_ids = Vec::new();
-    for line in os_release.lines() {
-        let trimmed = line.trim();
-        if let Some(value) = trimmed.strip_prefix("ID=") {
-            distribution_ids.push(value.trim_matches('"').to_ascii_lowercase());
-        } else if let Some(value) = trimmed.strip_prefix("ID_LIKE=") {
-            for id in value.trim_matches('"').split_whitespace() {
-                distribution_ids.push(id.to_ascii_lowercase());
-            }
-        }
-    }
-
-    let package_manager_hint = if distribution_ids
-        .iter()
-        .any(|distribution_id| distribution_id == "arch")
-    {
-        Some("Install it with: sudo pacman -S rsync")
-    } else if distribution_ids
-        .iter()
-        .any(|distribution_id| distribution_id == "debian" || distribution_id == "ubuntu")
-    {
-        Some("Install it with: sudo apt install rsync")
-    } else if distribution_ids.iter().any(|distribution_id| {
-        distribution_id == "fedora"
-            || distribution_id == "rhel"
-            || distribution_id == "centos"
-            || distribution_id == "rocky"
-            || distribution_id == "almalinux"
-    }) {
-        Some("Install it with: sudo dnf install rsync")
-    } else if distribution_ids
-        .iter()
-        .any(|distribution_id| distribution_id == "nixos")
-    {
-        Some("Install pkgs.rsync from nixpkgs")
-    } else {
-        None
-    };
-
-    package_manager_hint.unwrap_or("Please install rsync using your package manager")
-}
-
 actions!(
     auto_update,
     [
@@ -867,12 +818,10 @@ impl AutoUpdater {
         let install_result = {
             let running_app_path = cx.update(|cx| cx.app_path())?;
             let background_executor = cx.background_executor().clone();
-            let channel = cx.update(|cx| ReleaseChannel::global(cx).dev_name());
             cx.background_spawn(Self::install_release(
                 installer_dir,
                 target_path.clone(),
                 running_app_path,
-                channel,
                 background_executor,
             ))
             .await
@@ -931,15 +880,10 @@ impl AutoUpdater {
     }
 
     fn check_dependencies() -> Result<()> {
-        #[cfg(target_os = "linux")]
-        if which::which("rsync").is_err() {
-            let install_hint = linux_rsync_install_hint();
-            return Err(MissingDependencyError(format!(
-                "rsync is required for auto-updates but is not installed. {install_hint}"
-            ))
-            .into());
-        }
-
+        // The Linux and Windows updaters only use `tar`/`copy`/`rename` and a
+        // plain file download, both of which are always available, so only the
+        // macOS installer (which rsyncs over the app bundle) has a hard
+        // dependency to verify.
         #[cfg(target_os = "macos")]
         anyhow::ensure!(
             which::which("rsync").is_ok(),
@@ -959,7 +903,6 @@ impl AutoUpdater {
         installer_dir: InstallerDir,
         target_path: PathBuf,
         running_app_path: PathBuf,
-        channel: &str,
         background_executor: BackgroundExecutor,
     ) -> Result<Option<PathBuf>> {
         match OS {
@@ -972,9 +915,7 @@ impl AutoUpdater {
                 )
                 .await
             }
-            "linux" => {
-                install_release_linux(&installer_dir, &target_path, channel, running_app_path).await
-            }
+            "linux" => install_release_linux(&installer_dir, &target_path, running_app_path).await,
             "windows" => install_release_windows(&target_path).await,
             unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
         }
@@ -1211,12 +1152,9 @@ async fn download_release(
 async fn install_release_linux(
     temp_dir: &InstallerDir,
     downloaded_tar_gz: &Path,
-    channel: &str,
     running_app_path: PathBuf,
 ) -> Result<Option<PathBuf>> {
-    let home_dir = PathBuf::from(env::var("HOME").context("no HOME env var set")?);
-
-    let extracted = temp_dir.path().join("zed");
+    let extracted = temp_dir.path().join("rdg");
     fs::create_dir_all(&extracted)
         .await
         .context("failed to create directory into which to extract update")?;
@@ -1239,41 +1177,49 @@ async fn install_release_linux(
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let suffix = if channel != "stable" {
-        format!("-{}", channel)
-    } else {
-        String::default()
-    };
-    let app_folder_name = format!("zed{}.app", suffix);
-
-    let from = extracted.join(&app_folder_name);
-    let mut to = home_dir.join(".local");
-
-    let expected_suffix = format!("{}/libexec/zed-editor", app_folder_name);
-
-    if let Some(prefix) = running_app_path
-        .to_str()
-        .and_then(|str| str.strip_suffix(&expected_suffix))
-    {
-        to = PathBuf::from(prefix);
-    }
-
-    let mut cmd = new_command("rsync");
-    cmd.args(["-av", "--delete"]).arg(&from).arg(&to);
-    let output = cmd
-        .output()
-        .await
-        .with_context(|| "failed to rsync: {cmd}")?;
-
+    // The release tarball contains a self-contained `rdg/` directory with the
+    // single executable at its root.
+    let new_binary = extracted.join("rdg").join("rdg");
     anyhow::ensure!(
-        output.status.success(),
-        "failed to copy Zed update from {:?} to {:?}: {:?}",
-        from,
-        to,
-        String::from_utf8_lossy(&output.stderr)
+        smol::fs::metadata(&new_binary).await.is_ok(),
+        "release tarball is missing the rdg executable at {:?}",
+        new_binary
     );
 
-    Ok(Some(to.join(expected_suffix)))
+    // The running app path is the currently executing binary. Replace it in
+    // place: stage the new binary in the same directory so `rename` is atomic
+    // and never crosses a filesystem boundary, then swap it over the running
+    // executable. On Linux a `rename` onto a live executable is allowed -- the
+    // running process keeps its already-open inode and keeps running until the
+    // new binary is launched on restart.
+    let target_dir = running_app_path
+        .parent()
+        .with_context(|| format!("no parent directory for {:?}", running_app_path))?;
+    let staging = target_dir.join("rdg.new");
+    smol::fs::copy(&new_binary, &staging)
+        .await
+        .with_context(|| format!("failed to stage update at {:?}", staging))?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        smol::fs::set_permissions(&staging, fs::Permissions::from_mode(0o755))
+            .await
+            .context("failed to make staged binary executable")?;
+    }
+
+    smol::fs::rename(&staging, &running_app_path)
+        .await
+        .with_context(|| {
+            format!(
+                "failed to replace {:?} with staged binary",
+                running_app_path
+            )
+        })?;
+
+    // Return the path to the freshly installed binary so the app relaunches
+    // it on restart.
+    Ok(Some(running_app_path))
 }
 
 async fn install_release_macos(
