@@ -40,11 +40,19 @@ jobs:
           zig version
           cat > "$RUNNER_TEMP/zig-cc" <<EOF
           #!/usr/bin/env bash
-          exec "$(command -v zig)" cc "\$@"
+          arguments=()
+          for argument in "\$@"; do
+            arguments+=("\${argument//x86_64-unknown-linux-gnu/x86_64-linux-gnu}")
+          done
+          exec "$(command -v zig)" cc "\${arguments[@]}"
           EOF
           cat > "$RUNNER_TEMP/zig-cxx" <<EOF
           #!/usr/bin/env bash
-          exec "$(command -v zig)" c++ "\$@"
+          arguments=()
+          for argument in "\$@"; do
+            arguments+=("\${argument//x86_64-unknown-linux-gnu/x86_64-linux-gnu}")
+          done
+          exec "$(command -v zig)" c++ "\${arguments[@]}"
           EOF
           chmod +x "$RUNNER_TEMP/zig-cc" "$RUNNER_TEMP/zig-cxx"
           {
