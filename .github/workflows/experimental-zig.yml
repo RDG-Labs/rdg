@@ -58,7 +58,6 @@ jobs:
           {
             echo "CC=$RUNNER_TEMP/zig-cc"
             echo "CXX=$RUNNER_TEMP/zig-cxx"
-            echo "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=$RUNNER_TEMP/zig-cc"
           } >> "$GITHUB_ENV"
 
       - name: Build Rdg
