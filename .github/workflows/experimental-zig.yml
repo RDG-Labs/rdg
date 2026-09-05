@@ -1,4 +1,4 @@
-name: experimental-zig-build
+name: experimental-zig-benchmark
 
 on:
   workflow_dispatch:
@@ -10,34 +10,44 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: "1"
   ZIG_VERSION: 0.16.0
-  CARGO_TARGET_DIR: target-zig
 
 jobs:
   build:
-    name: Build Linux with Zig
+    name: Benchmark ${{ matrix.compiler }}
     runs-on: ubuntu-22.04
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [clang, zig]
+    env:
+      CARGO_TARGET_DIR: target-${{ matrix.compiler }}
+      BENCHMARK_COMPILER: ${{ matrix.compiler }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
-        with:
-          cache-targets: true
 
       - name: Install Linux dependencies
         run: ./script/linux
 
       - name: Install Zig
+        if: matrix.compiler == 'zig'
         uses: goto-bus-stop/setup-zig@abea47f85e598557f500fa1fd2ab7464fcb39406 # v2.2.1
         with:
           version: ${{ env.ZIG_VERSION }}
 
-      - name: Configure Zig C toolchain
+      - name: Configure C toolchain
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "${{ matrix.compiler }}" == "clang" ]]; then
+            {
+              echo "CC=/usr/bin/clang"
+              echo "CXX=/usr/bin/clang++"
+            } >> "$GITHUB_ENV"
+            exit 0
+          fi
+
           zig version
           cat > "$RUNNER_TEMP/zig-cc" <<EOF
           #!/usr/bin/env bash
@@ -74,5 +84,33 @@ jobs:
             echo "CXX=$RUNNER_TEMP/zig-cxx"
           } >> "$GITHUB_ENV"
 
-      - name: Build Rdg
-        run: cargo build --release --package rdg --target x86_64-unknown-linux-gnu
+      - name: Fetch dependencies
+        run: cargo fetch --locked
+
+      - name: Measure clean build
+        id: clean-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$CARGO_TARGET_DIR"
+          /usr/bin/time -f 'clean_seconds=%e' -o "$RUNNER_TEMP/clean-time" \
+            cargo build --locked --release --package rdg --target x86_64-unknown-linux-gnu
+          clean_seconds=$(cut -d= -f2 "$RUNNER_TEMP/clean-time")
+          echo "clean_seconds=$clean_seconds" >> "$GITHUB_OUTPUT"
+          echo "Clean build: ${clean_seconds}s" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Measure warm build
+        id: warm-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          /usr/bin/time -f 'warm_seconds=%e' -o "$RUNNER_TEMP/warm-time" \
+            cargo build --locked --release --package rdg --target x86_64-unknown-linux-gnu
+          warm_seconds=$(cut -d= -f2 "$RUNNER_TEMP/warm-time")
+          echo "warm_seconds=$warm_seconds" >> "$GITHUB_OUTPUT"
+          {
+            echo "Warm build: ${warm_seconds}s"
+            echo
+            printf "Compiler: \`%s\`\n" "$BENCHMARK_COMPILER"
+            printf "Target: \`%s\`\n" 'x86_64-unknown-linux-gnu'
+          } >> "$GITHUB_STEP_SUMMARY"
