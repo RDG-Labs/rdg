@@ -26,5 +26,4 @@ runs:
 
     - name: Run tests
       shell: bash -euxo pipefail {0}
-      # The randomized multi-buffer stress test can exceed the default 60s timeout on a fully loaded runner.
-      run: cargo nextest run --workspace --no-fail-fast --test-timeout 120s --failure-output immediate-final --filter-expr '${{ inputs.filter-expr }}'
+      run: cargo nextest run --workspace --no-fail-fast --failure-output immediate-final --filter-expr '${{ inputs.filter-expr }}'
