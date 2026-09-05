@@ -50,9 +50,11 @@ jobs:
           fi
           CHANGED_FILES="$(git diff --name-only "$COMPARE_REV" "$GITHUB_SHA")"
 
-          # Manual dispatch and direct pushes to main/release always run the full suite.
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] || [ -z "$GITHUB_BASE_REF" ]; then
-            echo "Manual dispatch or push to a release branch, running full test suite"
+          # Manual dispatch always runs the full suite. Pull requests and branch
+          # pushes compute the minimal set of changed packages and their
+          # dependents so CI stays fast for everyday work.
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "Manual dispatch, running full test suite"
             echo "changed_packages=" >> "$GITHUB_OUTPUT"
             echo "run_tests=true" >> "$GITHUB_OUTPUT"
             exit 0

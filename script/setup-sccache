@@ -114,13 +114,23 @@ configure_sccache() {
     fi
 
     # Also force the wrapper through cargo's config so `cargo nextest`'s build
-    # (which spawns `cargo` as a child and may not inherit `RUSTC_WRAPPER`
-    # reliably) routes every rustc invocation through sccache. Write it into
-    # the parent `.cargo/config.toml` (discovered by Cargo's upward walk from
-    # the workspace) that Cargo merges with the repo's own config.
+    # (which spawns `cargo` as a child from the workspace root) routes every
+    # rustc invocation through sccache even if the `RUSTC_WRAPPER` env var is
+    # not inherited into that child process. Inject into the repo's existing
+    # `[build]` table (TOML rejects duplicate tables, so we insert a line after
+    # the existing `[build]` header rather than appending a new table).
     if [[ -n "${GITHUB_WORKSPACE:-}" ]]; then
-        mkdir -p "${GITHUB_WORKSPACE}/../.cargo"
-        printf '\n[build]\nrustc-wrapper = %s\n' "\"${sccache_bin}\"" >> "${GITHUB_WORKSPACE}/../.cargo/config.toml"
+        local cargo_config="${GITHUB_WORKSPACE}/.cargo/config.toml"
+        if [[ -f "${cargo_config}" ]] && ! grep -q "rustc-wrapper" "${cargo_config}"; then
+            if grep -q "^\[build\]" "${cargo_config}"; then
+                # Insert right after the first `[build]` line.
+                awk -v insert="rustc-wrapper = \\\"${sccache_bin}\\\"" \
+                    '1; /^\[build\]/ && !done { print insert; done=1 }' \
+                    "${cargo_config}" > "${cargo_config}.tmp" && mv "${cargo_config}.tmp" "${cargo_config}"
+            else
+                printf '\n[build]\nrustc-wrapper = %s\n' "\"${sccache_bin}\"" >> "${cargo_config}"
+            fi
+        fi
     fi
 
     echo "✓ sccache configured with ${SCCACHE_ENDPOINT} (bucket: ${bucket})"
