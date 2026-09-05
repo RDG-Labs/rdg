@@ -40,11 +40,11 @@ jobs:
           zig version
           cat > "$RUNNER_TEMP/zig-cc" <<EOF
           #!/usr/bin/env bash
-          exec "$(command -v zig)" cc "$@"
+          exec "$(command -v zig)" cc "\$@"
           EOF
           cat > "$RUNNER_TEMP/zig-cxx" <<EOF
           #!/usr/bin/env bash
-          exec "$(command -v zig)" c++ "$@"
+          exec "$(command -v zig)" c++ "\$@"
           EOF
           chmod +x "$RUNNER_TEMP/zig-cc" "$RUNNER_TEMP/zig-cxx"
           {
