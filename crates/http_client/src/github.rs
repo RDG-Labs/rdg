@@ -90,6 +90,57 @@ pub async fn latest_github_release(
     Ok(release)
 }
 
+/// Fetches the list of releases for the given repository from the GitHub API.
+///
+/// Unlike [`latest_github_release`], this returns every release so callers can
+/// apply their own version/pre-release policy.
+pub async fn list_github_releases(
+    repo_name_with_owner: &str,
+    http: Arc<dyn HttpClient>,
+) -> anyhow::Result<Vec<GithubRelease>> {
+    let url = format!("{GITHUB_API_URL}/repos/{repo_name_with_owner}/releases");
+
+    let request = github_api_request(&url)?;
+
+    let mut response = http
+        .send(request)
+        .await
+        .context("error fetching releases")?;
+
+    let mut body = Vec::new();
+    let status = response.status();
+    response
+        .body_mut()
+        .read_to_end(&mut body)
+        .await
+        .context("error reading releases")?;
+
+    if status.is_client_error() {
+        let text = String::from_utf8_lossy(body.as_slice());
+        bail!("status error {}, response: {text:?}", status.as_u16());
+    }
+
+    let mut releases =
+        serde_json::from_slice::<Vec<GithubRelease>>(body.as_slice()).map_err(|err| {
+            log::error!("Error deserializing: {err:?}");
+            log::error!(
+                "GitHub API response text: {:?}",
+                String::from_utf8_lossy(body.as_slice())
+            );
+            anyhow!("error deserializing releases: {err:?}")
+        })?;
+    for release in releases.iter_mut() {
+        for asset in release.assets.iter_mut() {
+            if let Some(digest) = &mut asset.digest
+                && let Some(stripped) = digest.strip_prefix("sha256:")
+            {
+                *digest = stripped.to_owned();
+            }
+        }
+    }
+    Ok(releases)
+}
+
 pub async fn get_release_by_tag_name(
     repo_name_with_owner: &str,
     tag: &str,

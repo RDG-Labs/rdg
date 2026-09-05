@@ -6,6 +6,7 @@ use gpui::{
     App, AppContext as _, AsyncApp, BackgroundExecutor, Context, Entity, Global, Task, TaskExt,
     Window, actions,
 };
+use http_client::github::{GithubRelease, list_github_releases};
 use http_client::{HttpClient, HttpClientWithUrl};
 use paths::remote_servers_dir;
 use release_channel::{AppCommitSha, ReleaseChannel};
@@ -47,6 +48,9 @@ impl std::error::Error for MissingDependencyError {}
 const POLL_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const NIGHTLY_POLL_INTERVAL: Duration = Duration::from_secs(15 * 60);
 const REMOTE_SERVER_CACHE_LIMIT: usize = 5;
+
+/// Repository whose GitHub Releases drive Rdg's auto-update.
+const RDG_RELEASE_REPO: &str = "RDG-Labs/rdg";
 
 #[cfg(target_os = "linux")]
 fn linux_rsync_install_hint() -> &'static str {
@@ -338,22 +342,16 @@ pub fn check(_: &Check, window: &mut Window, cx: &mut App) {
 }
 
 pub fn release_notes_url(cx: &mut App) -> Option<String> {
-    let release_channel = ReleaseChannel::try_global(cx)?;
-    let url = match release_channel {
+    let url = match ReleaseChannel::try_global(cx)? {
         ReleaseChannel::Stable | ReleaseChannel::Preview => {
-            let auto_updater = AutoUpdater::get(cx)?;
-            let auto_updater = auto_updater.read(cx);
-            let mut current_version = auto_updater.current_version.clone();
-            current_version.pre = semver::Prerelease::EMPTY;
-            current_version.build = semver::BuildMetadata::EMPTY;
-            let release_channel = release_channel.dev_name();
-            let path = format!("/releases/{release_channel}/{current_version}");
-            auto_updater.client.http_client().build_url(&path)
+            format!("https://github.com/{RDG_RELEASE_REPO}/releases")
         }
         ReleaseChannel::Nightly => {
-            "https://github.com/zed-industries/zed/commits/nightly/".to_string()
+            format!("https://github.com/{RDG_RELEASE_REPO}/commits/main/")
         }
-        ReleaseChannel::Dev => "https://github.com/zed-industries/zed/commits/main/".to_string(),
+        ReleaseChannel::Dev => {
+            format!("https://github.com/{RDG_RELEASE_REPO}/commits/main/")
+        }
     };
     Some(url)
 }
@@ -730,6 +728,49 @@ impl AutoUpdater {
         })
     }
 
+    /// Resolves the newest Rdg app release from GitHub Releases for the given
+    /// channel and current platform, returning the matching asset.
+    ///
+    /// Stable and preview channels map to the same `v*` release tags. Stable
+    /// ignores prereleases while preview picks the newest version regardless:
+    /// when a stable release is the newest, preview tracks it, and when a
+    /// newer rc/alpha/beta is published first, preview tracks that instead.
+    async fn resolve_app_update(
+        release_channel: ReleaseChannel,
+        version: Option<Version>,
+        cx: &mut AsyncApp,
+    ) -> Result<ReleaseAsset> {
+        let client = cx.update(|cx| {
+            cx.default_global::<GlobalAutoUpdate>()
+                .0
+                .clone()
+                .context("auto-update not initialized")
+        })?;
+        let http_client = client.read_with(cx, |this, _| this.client.http_client());
+        let releases = list_github_releases(RDG_RELEASE_REPO, http_client).await?;
+
+        let release = resolve_newest_release(releases, release_channel, version)?;
+        let version = version_from_tag(&release.tag_name)?;
+        let os = OS;
+        let arch = ARCH;
+        let expected_name = release_asset_name(os, arch, release_channel);
+        let asset = release
+            .assets
+            .iter()
+            .find(|asset| asset.name == expected_name)
+            .with_context(|| {
+                format!(
+                    "no asset {expected_name:?} in Rdg release {}",
+                    release.tag_name
+                )
+            })?;
+
+        Ok(ReleaseAsset {
+            version: version.to_string(),
+            url: asset.browser_download_url.clone(),
+        })
+    }
+
     async fn update(this: Entity<Self>, cx: &mut AsyncApp) -> Result<()> {
         let (client, installed_version, previous_status, release_channel) =
             this.read_with(cx, |this, cx| {
@@ -749,8 +790,7 @@ impl AutoUpdater {
             cx.notify();
         });
 
-        let fetched_release_data =
-            Self::get_release_asset(&this, release_channel, None, "zed", OS, ARCH, cx).await?;
+        let fetched_release_data = Self::resolve_app_update(release_channel, None, cx).await?;
         let fetched_version = fetched_release_data.clone().version;
         let app_commit_sha = Ok(cx.update(|cx| AppCommitSha::try_global(cx).map(|sha| sha.full())));
         let newer_version = Self::check_if_fetched_version_is_newer(
@@ -784,7 +824,7 @@ impl AutoUpdater {
         let installer_dir = InstallerDir::new()
             .await
             .context("Failed to create installer dir")?;
-        let target_path = Self::target_path(&installer_dir).await?;
+        let target_path = Self::target_path(&installer_dir, release_channel).await?;
         let progress_entity = this.clone();
         let mut progress_cx = cx.clone();
         download_release(
@@ -909,14 +949,8 @@ impl AutoUpdater {
         Ok(())
     }
 
-    async fn target_path(installer_dir: &InstallerDir) -> Result<PathBuf> {
-        let filename = match OS {
-            "macos" => anyhow::Ok("Zed.dmg"),
-            "linux" => Ok("zed.tar.gz"),
-            "windows" => Ok("Zed.exe"),
-            unsupported_os => anyhow::bail!("not supported: {unsupported_os}"),
-        }?;
-
+    async fn target_path(installer_dir: &InstallerDir, channel: ReleaseChannel) -> Result<PathBuf> {
+        let filename = release_asset_name(OS, ARCH, channel);
         Ok(installer_dir.path().join(filename))
     }
 
@@ -983,6 +1017,65 @@ impl AutoUpdater {
             Ok(kvp.read_kvp(SHOULD_SHOW_UPDATE_NOTIFICATION_KEY)?.is_some())
         })
     }
+}
+
+/// Parses a version from a Rdg release tag (`v1.2.3` or `v1.2.3-rc.1`).
+fn version_from_tag(tag: &str) -> Result<Version> {
+    tag.strip_prefix('v')
+        .context("release tag missing leading 'v'")?
+        .parse::<Version>()
+        .context("release tag has an invalid version")
+}
+
+/// Returns the expected asset filename for the given OS and architecture.
+fn release_asset_name(os: &str, arch: &str, _channel: ReleaseChannel) -> String {
+    let extension = match os {
+        "macos" => ".dmg",
+        "linux" => ".tar.gz",
+        "windows" => ".zip",
+        unsupported => panic!("unsupported OS for release asset: {unsupported}"),
+    };
+    format!("rdg-{os}-{arch}{extension}")
+}
+
+/// Picks the newest release matching the channel's semantics.
+///
+/// Release candidates are the ones whose tag parses as an Rdg version. When a
+/// concrete `version` is requested it must match exactly; otherwise newest wins.
+/// Stable ignores prereleases while compatible development channels accept them.
+fn resolve_newest_release(
+    releases: Vec<GithubRelease>,
+    channel: ReleaseChannel,
+    version: Option<Version>,
+) -> Result<GithubRelease> {
+    let accepts_prereleases = matches!(channel, ReleaseChannel::Preview | ReleaseChannel::Nightly);
+
+    let mut newest: Option<(Version, GithubRelease)> = None;
+    for release in releases {
+        let Ok(candidate) = version_from_tag(&release.tag_name) else {
+            continue;
+        };
+        if !accepts_prereleases && !candidate.pre.is_empty() {
+            continue;
+        }
+        if let Some(requested) = &version {
+            let mut requested = requested.clone();
+            requested.pre = semver::Prerelease::EMPTY;
+            if candidate != requested {
+                continue;
+            }
+        }
+        if newest
+            .as_ref()
+            .is_none_or(|(newest_version, _)| candidate > *newest_version)
+        {
+            newest = Some((candidate, release));
+        }
+    }
+
+    newest
+        .map(|(_, release)| release)
+        .context("no Rdg release found")
 }
 
 async fn download_remote_server_binary(
@@ -1299,26 +1392,14 @@ async fn cleanup_windows() -> Result<()> {
     Ok(())
 }
 
-async fn install_release_windows(downloaded_installer: &Path) -> Result<Option<PathBuf>> {
-    let mut cmd = new_command(downloaded_installer);
-    cmd.arg("/verysilent")
-        .arg("/update=true")
-        .arg("/MERGETASKS=!desktopicon");
-    let output = cmd.output().await?;
-    anyhow::ensure!(
-        output.status.success(),
-        "failed to start installer: {:?}",
-        String::from_utf8_lossy(&output.stderr)
+async fn install_release_windows(_downloaded_installer: &Path) -> Result<Option<PathBuf>> {
+    // Rdg ships a portable .zip on Windows rather than an Inno Setup installer,
+    // so auto-install is not yet wired up here. Downloading and reporting the
+    // update still works; this surfaces a clear error instead of silently
+    // corrupting the install.
+    anyhow::bail!(
+        "Windows auto-install is not supported yet; download the latest release from the releases page."
     );
-    // We return the path to the update helper program, because it will
-    // perform the final steps of the update process, copying the new binary,
-    // deleting the old one, and launching the new binary.
-    let helper_path = std::env::current_exe()?
-        .parent()
-        .context("No parent dir for Zed.exe")?
-        .join("tools")
-        .join("auto_update_helper.exe");
-    Ok(Some(helper_path))
 }
 
 pub async fn finalize_auto_update_on_quit() {
@@ -1408,23 +1489,25 @@ mod tests {
                 let release_available = release_available.load(atomic::Ordering::Relaxed);
                 let dmg_rx = dmg_rx.clone();
                 async move {
-                if req.uri().path() == "/releases/stable/latest/asset" {
-                    if release_available {
-                        return Ok(Response::builder().status(200).body(
-                            r#"{"version":"0.100.1","url":"https://test.example/new-download"}"#.into()
-                        ).unwrap());
-                    } else {
-                        return Ok(Response::builder().status(200).body(
-                            r#"{"version":"0.100.0","url":"https://test.example/old-download"}"#.into()
-                        ).unwrap());
+                    if req.uri().path() == "/repos/RDG-Labs/rdg/releases" {
+                        let version = if release_available { "0.100.1" } else { "0.100.0" };
+                        let asset_name = release_asset_name(OS, ARCH, ReleaseChannel::Stable);
+                        let download_url = if release_available {
+                            "https://test.example/new-download"
+                        } else {
+                            "https://test.example/old-download"
+                        };
+                        let body = format!(
+                            r#"[{{"tag_name":"v{version}","prerelease":false,"tarball_url":"https://test.example/tarball","zipball_url":"https://test.example/zipball","assets":[{{"name":"{asset_name}","browser_download_url":"{download_url}"}}]}}]"#
+                        );
+                        return Ok(Response::builder().status(200).body(body.into()).unwrap());
+                    } else if req.uri().path() == "/new-download" || req.uri().path() == "/old-download" {
+                        return Ok(Response::builder().status(200).body({
+                            let dmg_rx = dmg_rx.lock().take().unwrap();
+                            dmg_rx.await.unwrap().into()
+                        }).unwrap());
                     }
-                } else if req.uri().path() == "/new-download" {
-                    return Ok(Response::builder().status(200).body({
-                        let dmg_rx = dmg_rx.lock().take().unwrap();
-                        dmg_rx.await.unwrap().into()
-                    }).unwrap());
-                }
-                Ok(Response::builder().status(404).body("".into()).unwrap())
+                    Ok(Response::builder().status(404).body("".into()).unwrap())
                 }
             });
             let client = Client::new(clock, fake_client_http, cx);
@@ -1871,6 +1954,100 @@ mod tests {
         assert_eq!(
             newer_version.unwrap(),
             Some(fetched_version.parse().unwrap())
+        );
+    }
+
+    fn release(tag: &str, prerelease: bool) -> GithubRelease {
+        GithubRelease {
+            tag_name: tag.to_string(),
+            pre_release: prerelease,
+            assets: vec![],
+            tarball_url: "http://example.com/tarball".into(),
+            zipball_url: "http://example.com/zipball".into(),
+        }
+    }
+
+    #[test]
+    fn version_from_tag_rejects_invalid_tags() {
+        assert!(version_from_tag("1.2.3").is_err(), "missing leading v");
+        assert!(version_from_tag("vabc").is_err(), "non-numeric version");
+        assert_eq!(version_from_tag("v1.2.3").unwrap(), Version::new(1, 2, 3));
+        assert_eq!(
+            version_from_tag("v1.2.3-rc.2").unwrap(),
+            "1.2.3-rc.2".parse().unwrap()
+        );
+    }
+
+    #[test]
+    fn release_asset_name_matches_published_assets() {
+        assert_eq!(
+            release_asset_name("macos", "aarch64", ReleaseChannel::Stable),
+            "rdg-macos-aarch64.dmg"
+        );
+        assert_eq!(
+            release_asset_name("linux", "x86_64", ReleaseChannel::Stable),
+            "rdg-linux-x86_64.tar.gz"
+        );
+        assert_eq!(
+            release_asset_name("windows", "x86_64", ReleaseChannel::Stable),
+            "rdg-windows-x86_64.zip"
+        );
+    }
+
+    #[test]
+    fn stable_ignores_prereleases() {
+        let releases = vec![release("v0.4.0-rc.1", true), release("v0.3.0", false)];
+        let resolved = resolve_newest_release(releases, ReleaseChannel::Stable, None).unwrap();
+        assert_eq!(resolved.tag_name, "v0.3.0");
+    }
+
+    #[test]
+    fn preview_tracks_rc_when_newest() {
+        let releases = vec![release("v0.4.0-rc.1", true), release("v0.3.0", false)];
+        let resolved = resolve_newest_release(releases, ReleaseChannel::Preview, None).unwrap();
+        assert_eq!(resolved.tag_name, "v0.4.0-rc.1");
+    }
+
+    #[test]
+    fn preview_tracks_stable_when_newest() {
+        let releases = vec![release("v0.4.0-rc.1", true), release("v0.4.0", false)];
+        let resolved = resolve_newest_release(releases, ReleaseChannel::Preview, None).unwrap();
+        assert_eq!(resolved.tag_name, "v0.4.0");
+    }
+
+    #[test]
+    fn skips_releases_with_non_rdg_tags() {
+        let releases = vec![
+            release("v0.4.0", false),
+            release("release-candidate", false),
+        ];
+        let resolved = resolve_newest_release(releases, ReleaseChannel::Stable, None).unwrap();
+        assert_eq!(resolved.tag_name, "v0.4.0");
+    }
+
+    #[test]
+    fn resolves_requested_version_exactly() {
+        let releases = vec![release("v0.5.0", false), release("v0.4.0", false)];
+        let resolved = resolve_newest_release(
+            releases,
+            ReleaseChannel::Stable,
+            Some(Version::new(0, 4, 0)),
+        )
+        .unwrap();
+        assert_eq!(resolved.tag_name, "v0.4.0");
+    }
+
+    #[test]
+    fn no_release_is_an_error() {
+        assert!(resolve_newest_release(vec![], ReleaseChannel::Stable, None).is_err());
+        assert!(
+            resolve_newest_release(
+                vec![release("v1.0.0-rc.1", true)],
+                ReleaseChannel::Stable,
+                None
+            )
+            .is_err(),
+            "stable must not return a prerelease"
         );
     }
 }
