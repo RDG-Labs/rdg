@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   update_top_ranking_issues:
-    runs-on: namespace-profile-2x4-ubuntu-2404
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     if: github.repository == 'zed-industries/zed'
     permissions:
       contents: read

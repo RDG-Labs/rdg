@@ -59,7 +59,7 @@ concurrency:
 jobs:
   validate_tag:
     name: Calculate release version
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     outputs:
       version: ${{ steps.release.outputs.version }}
       app_version: ${{ steps.release.outputs.app_version }}
@@ -208,7 +208,7 @@ jobs:
     name: Bump version on main
     needs: validate_tag
     if: needs.validate_tag.result == 'success'
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     permissions:
       contents: write
     outputs:
@@ -253,7 +253,7 @@ jobs:
       - validate_tag
       - prepare_release
     if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success' && (needs.validate_tag.outputs.build_platform == 'all' || needs.validate_tag.outputs.build_platform == 'linux')
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     timeout-minutes: 180
     env:
       RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
@@ -482,7 +482,7 @@ jobs:
             runner: macos-15-intel
             target: x86_64-apple-darwin
           - arch: aarch64
-            runner: macos-14
+            runner: blacksmith-12vcpu-macos-26
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
@@ -599,7 +599,7 @@ jobs:
       - validate_tag
       - prepare_release
     if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success' && (needs.validate_tag.outputs.build_platform == 'all' || needs.validate_tag.outputs.build_platform == 'windows')
-    runs-on: windows-2022
+    runs-on: blacksmith-4vcpu-windows-2025
     timeout-minutes: 180
     env:
       RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
@@ -701,7 +701,7 @@ jobs:
       - prepare_release
       - build_linux
     if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success' && needs.build_linux.result == 'success'
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     permissions:
       contents: write
     concurrency:
@@ -791,7 +791,7 @@ jobs:
       - prepare_release
       - build_windows
     if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success' && needs.build_windows.result == 'success'
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     permissions:
       contents: write
     concurrency:
@@ -848,7 +848,7 @@ jobs:
       - prepare_release
       - build_macos
     if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success' && needs.build_macos.result == 'success'
-    runs-on: macos-14
+    runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 180
     permissions:
       contents: write
