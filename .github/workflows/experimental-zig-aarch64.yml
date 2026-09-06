@@ -1,0 +1,100 @@
+name: experimental-zig-aarch64
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+  ZIG_VERSION: 0.16.0
+  CARGO_TARGET_DIR: target-zig-aarch64
+  PKG_CONFIG_ALLOW_CROSS: "1"
+  PKG_CONFIG_LIBDIR: /usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+
+jobs:
+  build:
+    name: Build Linux aarch64 with Zig
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+
+      - name: Install Linux dependencies
+        run: ./script/linux
+
+      - name: Install aarch64 sysroot and libraries
+        run: |
+          set -euo pipefail
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libc6-dev-arm64-cross \
+            libasound2-dev:arm64 \
+            libfontconfig-dev:arm64 \
+            libgit2-dev:arm64 \
+            libglib2.0-dev:arm64 \
+            libsqlite3-dev:arm64 \
+            libssl-dev:arm64 \
+            libva-dev:arm64 \
+            libvulkan-dev:arm64 \
+            libwayland-dev:arm64 \
+            libx11-xcb-dev:arm64 \
+            libxkbcommon-x11-dev:arm64 \
+            libzstd-dev:arm64
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@abea47f85e598557f500fa1fd2ab7464fcb39406 # v2.2.1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Configure cross toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add aarch64-unknown-linux-gnu
+          zig version
+          cat > "$RUNNER_TEMP/zig-aarch64-cc" <<EOF
+          #!/usr/bin/env bash
+          arguments=()
+          for argument in "\$@"; do
+            if [[ "\$argument" == "-fsanitize-undefined-strip-path-components=-1" ]]; then
+              continue
+            elif [[ "\$argument" == "--target=aarch64-unknown-linux-gnu" ]]; then
+              argument="--target=aarch64-linux-gnu"
+            fi
+            arguments+=("\$argument")
+          done
+          arguments+=("-fno-sanitize=undefined")
+          exec "$(command -v zig)" cc "\${arguments[@]}"
+          EOF
+          cat > "$RUNNER_TEMP/zig-aarch64-cxx" <<EOF
+          #!/usr/bin/env bash
+          arguments=()
+          for argument in "\$@"; do
+            if [[ "\$argument" == "-fsanitize-undefined-strip-path-components=-1" ]]; then
+              continue
+            elif [[ "\$argument" == "--target=aarch64-unknown-linux-gnu" ]]; then
+              argument="--target=aarch64-linux-gnu"
+            fi
+            arguments+=("\$argument")
+          done
+          arguments+=("-fno-sanitize=undefined")
+          exec "$(command -v zig)" c++ "\${arguments[@]}"
+          EOF
+          chmod +x "$RUNNER_TEMP/zig-aarch64-cc" "$RUNNER_TEMP/zig-aarch64-cxx"
+          {
+            echo "CC=/usr/bin/clang"
+            echo "CXX=/usr/bin/clang++"
+            echo "CC_aarch64_unknown_linux_gnu=$RUNNER_TEMP/zig-aarch64-cc"
+            echo "CXX_aarch64_unknown_linux_gnu=$RUNNER_TEMP/zig-aarch64-cxx"
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/aarch64-linux-gnu-gcc"
+          } >> "$GITHUB_ENV"
+
+      - name: Build Rdg
+        run: cargo build --locked --release --package rdg --target aarch64-unknown-linux-gnu
