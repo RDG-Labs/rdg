@@ -3040,6 +3040,22 @@ impl Terminal {
         }
     }
 
+    /// Pauses the foreground process group of a PTY terminal (SIGSTOP).
+    pub fn pause_process(&mut self) -> bool {
+        let TerminalType::Pty { info, .. } = &self.terminal_type else {
+            return false;
+        };
+        info.signal_current_process(libc::SIGSTOP)
+    }
+
+    /// Resumes a paused PTY terminal's foreground process group (SIGCONT).
+    pub fn resume_process(&mut self) -> bool {
+        let TerminalType::Pty { info, .. } = &self.terminal_type else {
+            return false;
+        };
+        info.signal_current_process(libc::SIGCONT)
+    }
+
     /// Returns whether this terminal still owns its live PTY sender.
     pub fn has_active_pty_resources(&self) -> bool {
         matches!(

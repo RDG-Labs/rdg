@@ -154,6 +154,23 @@ impl PtyProcessInfo {
         unsafe { libc::killpg(pid.as_u32() as i32, libc::SIGKILL) == 0 }
     }
 
+    /// Sends a signal to the foreground process group (the command currently
+    /// running in the shell). Used for pause/resume (SIGSTOP/SIGCONT).
+    #[cfg(unix)]
+    pub(crate) fn signal_current_process(&self, signal: libc::c_int) -> bool {
+        let Some(pid) = self.pid_getter.pid() else {
+            return false;
+        };
+        unsafe { libc::killpg(pid.as_u32() as i32, signal) == 0 }
+    }
+
+    #[cfg(not(unix))]
+    pub(crate) fn signal_current_process(&self, _signal: libc::c_int) -> bool {
+        // Pause/resume is a Unix process-group operation; no generic equivalent
+        // on Windows. Keep the entry point for API shape parity.
+        false
+    }
+
     #[cfg(not(unix))]
     pub(crate) fn kill_current_process(&self) -> bool {
         self.refresh().is_some_and(|process| process.kill())
