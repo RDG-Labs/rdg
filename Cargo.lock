@@ -14789,6 +14789,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal_group_benchmarks"
+version = "0.1.0"
+dependencies = [
+ "client",
+ "criterion",
+ "db",
+ "editor",
+ "fs",
+ "gpui",
+ "gpui_platform",
+ "language",
+ "project",
+ "settings",
+ "terminal",
+ "terminal_group",
+ "terminal_view",
+ "theme",
+ "theme_settings",
+ "util",
+ "workspace",
+]
+
+[[package]]
 name = "terminal_size"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

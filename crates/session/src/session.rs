@@ -46,6 +46,18 @@ impl Session {
         }
     }
 
+    /// A production-shaped session for benchmark graphs: a fresh session id and
+    /// no DB round-trip. Mirrors [`Session::test`] but behind the `bench-support`
+    /// token so benchmarks never enable `test-support`.
+    #[cfg(feature = "bench-support")]
+    pub fn bench() -> Self {
+        Self {
+            session_id: uuid::Uuid::new_v4().to_string(),
+            old_session_id: None,
+            old_window_ids: None,
+        }
+    }
+
     #[cfg(any(test, feature = "test-support"))]
     pub fn test_with_old_session(old_session_id: String) -> Self {
         Self {
@@ -70,7 +82,14 @@ impl AppSession {
     pub fn new(session: Session, cx: &Context<Self>) -> Self {
         let _subscriptions = vec![cx.on_app_quit(Self::app_will_quit)];
 
-        let _serialization_task = if cfg!(not(any(test, feature = "test-support"))) {
+        // The serialization loop runs forever on a fixed timer, which is a
+        // benchmark-teardown hazard (lingering timers) and meaningless without
+        // a real window stack to serialize. Benchmarks don't need it.
+        let _serialization_task = if cfg!(not(any(
+            test,
+            feature = "test-support",
+            feature = "bench-support"
+        ))) {
             let db = KeyValueStore::global(cx);
             cx.spawn(async move |_, cx| {
                 // Disabled in tests: the infinite loop bypasses "parking forbidden" checks,

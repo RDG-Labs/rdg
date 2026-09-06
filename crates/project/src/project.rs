@@ -19,6 +19,7 @@ pub mod task_inventory;
 pub mod task_store;
 pub mod telemetry_snapshot;
 pub mod terminals;
+pub mod toolchains;
 pub mod toolchain_store;
 pub mod trusted_worktrees;
 pub mod worktree_store;
@@ -61,7 +62,7 @@ use clock::ReplicaId;
 
 use dap::client::DebugAdapterClient;
 
-use collections::{BTreeSet, HashMap, HashSet, IndexSet};
+use collections::{BTreeSet, HashMap, HashSet};
 use debounced_delay::DebouncedDelay;
 pub use debugger::breakpoint_store::BreakpointWithPosition;
 use debugger::{
@@ -83,8 +84,8 @@ use gpui::{
 };
 use language::{
     Buffer, BufferEditSource, BufferEvent, Capability, CodeLabel, CursorShape, DiskState, Language,
-    LanguageName, LanguageRegistry, PointUtf16, ToOffset, ToPointUtf16, Toolchain,
-    ToolchainMetadata, ToolchainScope, Transaction, Unclipped, language_settings::InlayHintKind,
+    LanguageName, LanguageRegistry, PointUtf16, ToOffset, ToPointUtf16, Transaction, Unclipped,
+    language_settings::InlayHintKind,
 };
 use lsp::{
     CodeActionKind, CompletionContext, CompletionItemKind, DocumentHighlightKind, InsertTextMode,
@@ -114,7 +115,6 @@ pub use snippet_provider;
 use snippet_provider::SnippetProvider;
 use std::{
     borrow::Cow,
-    collections::BTreeMap,
     ffi::OsString,
     future::Future,
     ops::{Not as _, Range},
@@ -129,7 +129,7 @@ use task_store::TaskStore;
 use terminals::Terminals;
 use text::{Anchor, BufferId, Point, Rope};
 use util::{
-    ResultExt as _, maybe,
+    ResultExt as _,
     path_list::PathList,
     paths::{PathStyle, SanitizedPath, is_absolute},
     rel_path::RelPath,
@@ -3392,99 +3392,6 @@ impl Project {
         }
     }
 
-    pub async fn toolchain_metadata(
-        languages: Arc<LanguageRegistry>,
-        language_name: LanguageName,
-    ) -> Option<ToolchainMetadata> {
-        languages
-            .language_for_name(language_name.as_ref())
-            .await
-            .ok()?
-            .toolchain_lister()
-            .map(|lister| lister.meta())
-    }
-
-    pub fn add_toolchain(
-        &self,
-        toolchain: Toolchain,
-        scope: ToolchainScope,
-        cx: &mut Context<Self>,
-    ) {
-        maybe!({
-            self.toolchain_store.as_ref()?.update(cx, |this, cx| {
-                this.add_toolchain(toolchain, scope, cx);
-            });
-            Some(())
-        });
-    }
-
-    pub fn remove_toolchain(
-        &self,
-        toolchain: Toolchain,
-        scope: ToolchainScope,
-        cx: &mut Context<Self>,
-    ) {
-        maybe!({
-            self.toolchain_store.as_ref()?.update(cx, |this, cx| {
-                this.remove_toolchain(toolchain, scope, cx);
-            });
-            Some(())
-        });
-    }
-
-    pub fn user_toolchains(
-        &self,
-        cx: &App,
-    ) -> Option<BTreeMap<ToolchainScope, IndexSet<Toolchain>>> {
-        Some(self.toolchain_store.as_ref()?.read(cx).user_toolchains())
-    }
-
-    pub fn resolve_toolchain(
-        &self,
-        path: PathBuf,
-        language_name: LanguageName,
-        cx: &App,
-    ) -> Task<Result<Toolchain>> {
-        if let Some(toolchain_store) = self.toolchain_store.as_ref().map(Entity::downgrade) {
-            cx.spawn(async move |cx| {
-                toolchain_store
-                    .update(cx, |this, cx| {
-                        this.resolve_toolchain(path, language_name, cx)
-                    })?
-                    .await
-            })
-        } else {
-            Task::ready(Err(anyhow!("This project does not support toolchains")))
-        }
-    }
-
-    pub fn toolchain_store(&self) -> Option<Entity<ToolchainStore>> {
-        self.toolchain_store.clone()
-    }
-    pub fn activate_toolchain(
-        &self,
-        path: ProjectPath,
-        toolchain: Toolchain,
-        cx: &mut App,
-    ) -> Task<Option<()>> {
-        let Some(toolchain_store) = self.toolchain_store.clone() else {
-            return Task::ready(None);
-        };
-        toolchain_store.update(cx, |this, cx| this.activate_toolchain(path, toolchain, cx))
-    }
-    pub fn active_toolchain(
-        &self,
-        path: ProjectPath,
-        language_name: LanguageName,
-        cx: &App,
-    ) -> Task<Option<Toolchain>> {
-        let Some(toolchain_store) = self.toolchain_store.clone() else {
-            return Task::ready(None);
-        };
-        toolchain_store
-            .read(cx)
-            .active_toolchain(path, language_name, cx)
-    }
     pub fn language_server_statuses<'a>(
         &'a self,
         cx: &'a App,

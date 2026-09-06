@@ -1232,6 +1232,43 @@ impl AppState {
         cx.set_global(GlobalAppState(state));
     }
 
+    /// A production-faithful `AppState` for benchmarks: real settings, a real
+    /// filesystem, a production `Client` bound to the benchmark's http client,
+    /// and no node runtime. Unlike [`Self::test`], it uses production
+    /// constructors throughout so benchmark measurements exercise the real
+    /// path; it is available only under `bench-support` so it never pulls
+    /// `test-support` into a benchmark graph.
+    ///
+    /// The caller must have registered a `SettingsStore` and installed an http
+    /// client (a `BlockedHttpClient`, for local-first benchmarks) before
+    /// calling this, matching the production startup order.
+    #[cfg(feature = "bench-support")]
+    pub fn bench(
+        client: Arc<Client>,
+        fs: Arc<dyn fs::Fs>,
+        languages: Arc<LanguageRegistry>,
+        cx: &mut App,
+    ) -> Arc<Self> {
+        use node_runtime::NodeRuntime;
+        use session::Session;
+
+        let node_runtime = NodeRuntime::unavailable();
+        let session = cx.new(|cx| AppSession::new(Session::bench(), cx));
+        let user_store = cx.new(|cx| UserStore::new(client.clone(), cx));
+        let workspace_store = cx.new(|_| WorkspaceStore::new());
+
+        Arc::new(Self {
+            client,
+            fs,
+            languages,
+            user_store,
+            workspace_store,
+            node_runtime,
+            build_window_options: |_, _| Default::default(),
+            session,
+        })
+    }
+
     #[cfg(any(test, feature = "test-support"))]
     pub fn test(cx: &mut App) -> Arc<Self> {
         use fs::Fs;

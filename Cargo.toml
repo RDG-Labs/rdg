@@ -171,6 +171,7 @@ members = [
     "crates/telemetry_events",
     "crates/terminal",
     "crates/terminal_group",
+    "crates/terminal_group_benchmarks",
     "crates/terminal_view",
     "crates/text",
     "crates/theme",
