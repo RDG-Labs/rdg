@@ -128,6 +128,9 @@ fn render_tile_header(
     let worker_status = group
         .read_with(cx, |group, _| group.worker_status(pane_entity.entity_id().as_u64()))
         .unwrap_or(None);
+    let worker_id = group
+        .read_with(cx, |group, _| group.worker_id_for_pane(pane_entity.entity_id()))
+        .unwrap_or(None);
     let status_color = match worker_status.as_deref() {
         Some("completed") => cx.theme().status().success,
         Some("failed") => cx.theme().status().error,
@@ -276,6 +279,22 @@ fn render_tile_header(
                 }
             }),
         )
+        .when_some(worker_id, |this, worker_id| {
+            let group = group.clone();
+            this.child(
+                IconButton::new("demote-tile", IconName::ChevronDown)
+                    .shape(IconButtonShape::Square)
+                    .icon_size(IconSize::XSmall)
+                    .tooltip(Tooltip::text("Send to overflow"))
+                    .on_click(move |_, window, cx| {
+                        group
+                            .update(cx, |group, cx| {
+                                group.control_demote(worker_id, window, cx);
+                            })
+                            .ok();
+                    }),
+            )
+        })
         .child(
             IconButton::new("close-tile", IconName::Close)
                 .shape(IconButtonShape::Square)

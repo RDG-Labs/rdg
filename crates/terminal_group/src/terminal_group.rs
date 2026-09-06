@@ -1803,6 +1803,33 @@ impl TerminalGroup {
         cx.notify();
     }
 
+    /// Detaches a tile from the tree and moves focus, without closing its
+    /// items. Used by demote, where the tile's terminal has already been
+    /// re-homed to overflow and must not be killed.
+    fn remove_tile_from_tree(
+        &mut self,
+        pane: &Entity<Pane>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.is_magnified(pane) {
+            self.magnified_pane = None;
+        }
+        self.predicted_sizes.remove(&pane.entity_id());
+        self.spawning.remove(&pane.entity_id());
+        self.worker_panes.retain(|_, tracked| tracked != pane);
+        match self.center.remove(pane, cx) {
+            Ok(_) => {
+                let next = self.center.first_pane();
+                self.set_active_pane(&next, window, cx);
+            }
+            Err(error) => {
+                log::error!("failed to remove terminal tile: {error:#}");
+            }
+        }
+        cx.emit(ItemEvent::UpdateTab);
+    }
+
     /// Invariant TG-1: a tile holds exactly one terminal.
     ///
     /// Anything that lands a second item in a tile — a task spawn, a reopened
@@ -1910,6 +1937,15 @@ impl TerminalGroup {
             .map(|metadata| metadata.status.clone())
     }
 
+    /// The stable worker id backing a visible pane, if that pane is a worker.
+    /// Handles promoted workers where the worker id differs from the pane id.
+    pub(crate) fn worker_id_for_pane(&self, pane_id: gpui::EntityId) -> Option<u64> {
+        self.worker_panes
+            .iter()
+            .find(|(_, pane)| pane.entity_id() == pane_id)
+            .map(|(id, _)| *id)
+    }
+
     pub(crate) fn control_focus(
         &mut self,
         worker_id: u64,
@@ -1926,6 +1962,17 @@ impl TerminalGroup {
         };
         self.set_active_pane(&pane, window, cx);
         true
+    }
+
+    /// Moves a visible worker off the grid into the overflow set (see
+    /// [`Self::demote_worker`]).
+    pub(crate) fn control_demote(
+        &mut self,
+        worker_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        self.demote_worker(worker_id, window, cx)
     }
 
     /// Moves an overflow worker onto the visible grid, keeping its live
@@ -1983,6 +2030,82 @@ impl TerminalGroup {
             summary: None,
         });
         self.set_active_pane(&pane, window, cx);
+        true
+    }
+
+    /// Moves a visible worker off the grid into the overflow set, keeping its
+    /// live process: the tile's underlying `Terminal`/PTY is re-homed into a
+    /// standalone overflow `TerminalView` rather than re-spawned. The worker's
+    /// stable id is preserved, so its `RDG_WORKER_ID` and self-reports keep
+    /// working. Refuses to empty the last tile.
+    fn demote_worker(
+        &mut self,
+        worker_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.center.panes().len() <= 1 {
+            return false;
+        }
+        let Some(pane) = self.worker_panes.get(&worker_id).cloned() else {
+            return false;
+        };
+        // Retain the live PTY so dropping the tile's TerminalView doesn't kill
+        // it; refcount keeps the Terminal entity (and its process) alive.
+        let Some(terminal_view) = tile_terminal(pane.read(cx), cx) else {
+            return false;
+        };
+        let terminal = terminal_view.read(cx).terminal().clone();
+        let metadata = self.worker_metadata.get(&worker_id).cloned().unwrap_or_else(|| {
+            WorkerMetadata {
+                parent_id: None,
+                command: String::new(),
+                status: "working".to_string(),
+                summary: None,
+            }
+        });
+
+        let pane_id = pane.entity_id().as_u64();
+        self.worker_panes.remove(&worker_id);
+        self.worker_metadata.remove(&pane_id);
+
+        // Re-home the terminal into a standalone overflow view under the same
+        // stable id, before the tile's view is dropped.
+        let workspace = self.workspace.clone();
+        let project = self.project.downgrade();
+        let workspace_id = workspace
+            .read_with(cx, |workspace, _| workspace.database_id())
+            .ok()
+            .flatten();
+        let terminal_view = cx.new(|cx| {
+            TerminalView::new(
+                terminal,
+                workspace,
+                workspace_id,
+                project,
+                window,
+                cx,
+            )
+        });
+        self.overflow_workers.insert(
+            worker_id,
+            OverflowWorker {
+                terminal_view,
+                metadata: metadata.clone(),
+            },
+        );
+        self.worker_metadata.insert(worker_id, metadata);
+
+        // Detach the tile from the tree without closing its items (that would
+        // kill the re-homed terminal); the retained terminal keeps the PTY
+        // alive. Focus moves to the pane that takes the vacated space.
+        self.remove_tile_from_tree(&pane, window, cx);
+        cx.emit(WorkerEvent::Updated {
+            worker_id,
+            status: "working".to_string(),
+            summary: None,
+        });
+        cx.notify();
         true
     }
 
@@ -2657,10 +2780,22 @@ impl Render for TerminalGroup {
             .menu(move |window, cx| {
                 let group = group.upgrade()?;
                 let worker_tree = worker_tree.clone();
+                // Precompute visibility per worker (in worker_panes) using the
+                // menu's app context; the build closure below owns cx.
+                let visibility = worker_tree
+                    .iter()
+                    .map(|(worker, _)| {
+                        group
+                            .read_with(cx, |group, _| {
+                                group.worker_panes.contains_key(&worker.id)
+                            })
+                    })
+                    .collect::<Vec<_>>();
                 Some(ContextMenu::build(window, cx, move |menu, _window: &mut Window, _| {
                     let mut menu = menu.label("Mission Control");
-                    for (worker, depth) in &worker_tree {
-                        let marker = match worker.status.as_str() {
+                    for ((worker, depth), is_visible) in
+                        worker_tree.iter().zip(visibility.iter())
+                    {                        let marker = match worker.status.as_str() {
                             "completed" => "✓",
                             "failed" => "✕",
                             "waiting" => "○",
@@ -2675,15 +2810,18 @@ impl Render for TerminalGroup {
                             worker.status
                         );
                         let worker_id = worker.id;
+                        let is_visible = *is_visible;
                         let group_for_focus = group.clone();
                         let group_for_restart = group.clone();
                         let group_for_close = group.clone();
                         let group_for_subtree = group.clone();
+                        let group_for_demote = group.clone();
                         menu = menu.submenu(label, move |menu, window, _| {
                             let group_for_focus = group_for_focus.clone();
                             let group_for_restart = group_for_restart.clone();
                             let group_for_close = group_for_close.clone();
                             let group_for_subtree = group_for_subtree.clone();
+                            let group_for_demote = group_for_demote.clone();
                             let menu = menu.entry(
                                 "Focus Worker",
                                 None,
@@ -2698,6 +2836,17 @@ impl Render for TerminalGroup {
                                     group.control_restart(worker_id, window, cx);
                                 }),
                             );
+                            let menu = if is_visible {
+                                menu.entry(
+                                    "Send to Overflow",
+                                    None,
+                                    window.handler_for(&group_for_demote, move |group, window, cx| {
+                                        group.control_demote(worker_id, window, cx);
+                                    }),
+                                )
+                            } else {
+                                menu
+                            };
                             let menu = menu.entry(
                                 "Close Worker",
                                 None,
@@ -3454,6 +3603,83 @@ mod tests {
                 "the report should land on the promoted worker's metadata"
             );
         });
+    }
+
+    /// Demoting a visible worker moves it back to overflow, preserving the live
+    /// process and the worker's stable id: the grid shrinks, the worker lands in
+    /// the overflow set under the same id, and self-reports still resolve.
+    #[gpui::test]
+    async fn test_demote_visible_worker_to_overflow(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        init_test(cx);
+
+        cx.update_global(|store: &mut SettingsStore, cx| {
+            store
+                .set_user_settings(r#"{"terminal_workspace": {"max_tiles": 1}}"#, cx)
+                .unwrap();
+        });
+
+        let (window, group) = init_group(cx).await;
+        cx.run_until_parked();
+
+        // Overflow a worker, then make room and promote it on-grid.
+        let worker_id = window
+            .update(cx, |_, window, cx| {
+                group.update(cx, |group, cx| {
+                    group.control_spawn(None, None, "echo demote".to_string(), window, cx)
+                })
+            })
+            .expect("failed to spawn")
+            .expect("worker should spawn");
+        cx.run_until_parked();
+
+        cx.update_global(|store: &mut SettingsStore, cx| {
+            store
+                .set_user_settings(r#"{"terminal_workspace": {"max_tiles": 4}}"#, cx)
+                .unwrap();
+        });
+        window
+            .update(cx, |_, window, cx| {
+                group.update(cx, |group, cx| group.control_focus(worker_id, window, cx))
+            })
+            .expect("failed to promote");
+        cx.run_until_parked();
+
+        // Demote the visible worker back to overflow.
+        let demoted = window
+            .update(cx, |_, window, cx| {
+                group.update(cx, |group, cx| group.control_demote(worker_id, window, cx))
+            })
+            .expect("failed to demote");
+        cx.run_until_parked();
+
+        assert!(demoted, "demotion should succeed");
+        group.read_with(cx, |group, _| {
+            assert_eq!(group.tiles().len(), 1, "the grid should shrink back");
+            assert!(
+                group.overflow_workers.contains_key(&worker_id),
+                "the worker should be back in the overflow set under its stable id"
+            );
+            assert!(
+                !group.worker_panes.contains_key(&worker_id),
+                "the worker should no longer be on the visible grid"
+            );
+        });
+
+        // Its id is unchanged, so the worker's self-reports still resolve.
+        let reported = window
+            .update(cx, |_, _window, cx| {
+                group.update(cx, |group, cx| {
+                    group.control_report(
+                        worker_id,
+                        "working".to_string(),
+                        Some("alive after demote".to_string()),
+                        cx,
+                    )
+                })
+            })
+            .expect("failed to report");
+        assert!(reported, "worker self-report must resolve after demotion");
     }
 
     /// Ship gate 4, at the integration level: after real layout, repeated splits
