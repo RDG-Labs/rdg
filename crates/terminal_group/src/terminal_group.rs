@@ -1869,11 +1869,10 @@ impl TerminalGroup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        // Overflow workers aren't on the visible grid yet; focusing them is a
-        // promotion that preserves the live process. That swap is a follow-up;
-        // for now close a tile or let the strip show it's running off-grid.
+        // Focusing an overflow worker promotes it to a visible tile, preserving
+        // the live process (the underlying PTY is re-homed into the grid).
         if self.overflow_workers.contains_key(&worker_id) {
-            return false;
+            return self.promote_worker(worker_id, window, cx);
         }
         let Some(pane) = self
             .center
@@ -1884,6 +1883,64 @@ impl TerminalGroup {
         else {
             return false;
         };
+        self.set_active_pane(&pane, window, cx);
+        true
+    }
+
+    /// Moves an overflow worker onto the visible grid, keeping its live
+    /// process: the underlying `Terminal`/PTY is re-homed into a new tile's
+    /// `TerminalView` rather than re-spawned. A no-op if the grid is at its
+    /// visible cap.
+    fn promote_worker(
+        &mut self,
+        worker_id: u64,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.at_visible_cap(cx) {
+            return false;
+        }
+        let Some(worker) = self.overflow_workers.remove(&worker_id) else {
+            return false;
+        };
+        let terminal = worker.terminal_view.read(cx).terminal().clone();
+        let metadata = worker.metadata;
+
+        let pane = self.new_tile(window, cx);
+        // Place the new tile beside the active pane so it joins the visible
+        // grid (new_tile alone only constructs the pane, it doesn't mount it).
+        let source = self.active_pane.clone();
+        self.center.split(&source, &pane, SplitDirection::Right, cx);
+        let workspace = self.workspace.clone();
+        let project = self.project.downgrade();
+        let workspace_id = workspace
+            .read_with(cx, |workspace, _| workspace.database_id())
+            .ok()
+            .flatten();
+        let pane_id = pane.entity_id();
+        pane.update(cx, |pane, cx| {
+            let view = cx.new(|cx| {
+                TerminalView::new(
+                    terminal,
+                    workspace.clone(),
+                    workspace_id,
+                    project.clone(),
+                    window,
+                    cx,
+                )
+            });
+            pane.add_item(Box::new(view), true, true, None, window, cx);
+        });
+
+        // Re-home the worker under the visible tile's id, preserving status.
+        let new_worker_id = pane_id.as_u64();
+        self.worker_metadata.insert(new_worker_id, metadata);
+        self.worker_metadata.remove(&worker_id);
+        cx.emit(WorkerEvent::Updated {
+            worker_id: new_worker_id,
+            status: "working".to_string(),
+            summary: None,
+        });
         self.set_active_pane(&pane, window, cx);
         true
     }
@@ -2782,6 +2839,15 @@ impl TerminalGroup {
                     Label::new(title).size(LabelSize::Small),
                 )
                 .child(
+                    IconButton::new("overflow-promote", IconName::ArrowDown)
+                        .shape(IconButtonShape::Square)
+                        .icon_size(IconSize::XSmall)
+                        .tooltip(Tooltip::text("Promote to a visible tile"))
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.control_focus(worker_id, window, cx);
+                        })),
+                )
+                .child(
                     IconButton::new("overflow-close", IconName::Close)
                         .shape(IconButtonShape::Square)
                         .icon_size(IconSize::XSmall)
@@ -3264,6 +3330,56 @@ mod tests {
                 listed.iter().any(|worker| worker.id == worker_id),
                 "overflow worker should appear in control_list"
             );
+        });
+    }
+
+    /// Promoting an overflow worker moves it onto the visible grid, preserving
+    /// the live terminal: the grid grows by one tile and the overflow set
+    /// drains that worker.
+    #[gpui::test]
+    async fn test_promote_overflow_worker_to_a_visible_tile(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        init_test(cx);
+
+        cx.update_global(|store: &mut SettingsStore, cx| {
+            store
+                .set_user_settings(r#"{"terminal_workspace": {"max_tiles": 1}}"#, cx)
+                .unwrap();
+        });
+
+        let (window, group) = init_group(cx).await;
+        cx.run_until_parked();
+
+        let worker_id = window
+            .update(cx, |_, window, cx| {
+                group.update(cx, |group, cx| {
+                    group.control_spawn(None, None, "echo promote".to_string(), window, cx)
+                })
+            })
+            .expect("failed to spawn")
+            .expect("worker should spawn");
+        cx.run_until_parked();
+
+        // Make room for a visible tile, then promote the worker.
+        cx.update_global(|store: &mut SettingsStore, cx| {
+            store
+                .set_user_settings(r#"{"terminal_workspace": {"max_tiles": 4}}"#, cx)
+                .unwrap();
+        });
+        let promoted = window
+            .update(cx, |_, window, cx| {
+                group.update(cx, |group, cx| group.control_focus(worker_id, window, cx))
+            })
+            .expect("failed to promote");
+        cx.run_until_parked();
+
+        assert!(promoted, "promotion should succeed");
+        group.read_with(cx, |group, _| {
+            assert!(
+                !group.overflow_workers.contains_key(&worker_id),
+                "overflow worker should be drained after promotion"
+            );
+            assert_eq!(group.tiles().len(), 2, "the grid should grow by one tile");
         });
     }
 
