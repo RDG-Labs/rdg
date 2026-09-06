@@ -98,13 +98,22 @@ jobs:
           arguments+=("-fno-sanitize=undefined")
           exec "$(command -v zig)" c++ "\${arguments[@]}"
           EOF
-          chmod +x "$RUNNER_TEMP/zig-aarch64-cc" "$RUNNER_TEMP/zig-aarch64-cxx"
+          cat > "$RUNNER_TEMP/aarch64-linker" <<'EOF'
+          #!/usr/bin/env bash
+          arguments=()
+          for argument in "$@"; do
+            [[ "$argument" == "-fuse-ld=lld" ]] && continue
+            arguments+=("$argument")
+          done
+          exec /usr/bin/aarch64-linux-gnu-gcc "${arguments[@]}"
+          EOF
+          chmod +x "$RUNNER_TEMP/zig-aarch64-cc" "$RUNNER_TEMP/zig-aarch64-cxx" "$RUNNER_TEMP/aarch64-linker"
           {
             echo "CC=/usr/bin/clang"
             echo "CXX=/usr/bin/clang++"
             echo "CC_aarch64_unknown_linux_gnu=$RUNNER_TEMP/zig-aarch64-cc"
             echo "CXX_aarch64_unknown_linux_gnu=$RUNNER_TEMP/zig-aarch64-cxx"
-            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=/usr/bin/aarch64-linux-gnu-gcc"
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=$RUNNER_TEMP/aarch64-linker"
           } >> "$GITHUB_ENV"
 
       - name: Build Rdg
