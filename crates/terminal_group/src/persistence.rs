@@ -29,6 +29,18 @@ pub(crate) struct SerializedTerminalGroup {
     /// Index of the magnified tile in reading order, if any.
     pub magnified_tile: Option<usize>,
     pub title: Option<String>,
+    /// Workers spilled past the visible-tile cap, to re-spawn on restore.
+    /// Live PTYs cannot survive a restart (no daemon), so each worker is
+    /// re-created by its command rather than re-attached.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub overflow_workers: Vec<SerializedWorker>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct SerializedWorker {
+    pub command: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -221,6 +233,7 @@ mod tests {
             focused_tile: Some(2),
             magnified_tile: None,
             title: Some("services".into()),
+            overflow_workers: vec![],
         };
 
         let encoded = serde_json::to_string(&layout).expect("failed to encode");
