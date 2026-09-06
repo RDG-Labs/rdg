@@ -24,6 +24,7 @@ use project::Project;
 use serde::Serialize;
 use settings::Settings as _;
 use std::collections::{HashMap, HashSet};
+use terminal::Terminal;
 use terminal_view::TerminalView;
 use ui::{
     AlertModal, ContextMenu, IconButton, IconButtonShape, IconName, IconSize, PopoverMenu, Tooltip,
@@ -1551,22 +1552,61 @@ impl TerminalGroup {
         Some(worker_id)
     }
 
-    pub fn control_send(&self, worker_id: u64, text: &str, cx: &mut App) -> bool {
-        // Overflow workers have no pane; resolve the terminal directly.
+    /// Resolves a worker's live `Terminal`, whether it currently lives on the
+    /// visible grid (in a pane) or in the overflow set. O(1) by worker id.
+    fn terminal_for_worker(&self, worker_id: u64, cx: &App) -> Option<Entity<Terminal>> {
         if let Some(worker) = self.overflow_workers.get(&worker_id) {
-            let terminal = worker.terminal_view.read(cx).terminal().clone();
-            terminal.update(cx, |terminal, _| terminal.input(text.as_bytes().to_vec()));
-            return true;
+            return Some(worker.terminal_view.read(cx).terminal().clone());
         }
-        let Some(pane) = self.worker_panes.get(&worker_id) else {
+        let pane = self.worker_panes.get(&worker_id)?;
+        tile_terminal(pane.read(cx), cx).map(|view| view.read(cx).terminal().clone())
+    }
+
+    pub fn control_send(&self, worker_id: u64, text: &str, cx: &mut App) -> bool {
+        let Some(terminal) = self.terminal_for_worker(worker_id, cx) else {
             return false;
         };
-        let Some(terminal_view) = tile_terminal(pane.read(cx), cx) else {
-            return false;
-        };
-        let terminal = terminal_view.read(cx).terminal().clone();
         terminal.update(cx, |terminal, _| terminal.input(text.as_bytes().to_vec()));
         true
+    }
+
+    /// Pauses a worker's foreground process (SIGSTOP), whether on-grid or
+    /// overflowed.
+    pub(crate) fn control_pause(
+        &mut self,
+        worker_id: u64,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(terminal) = self.terminal_for_worker(worker_id, cx) else {
+            return false;
+        };
+        let paused = terminal.update(cx, |terminal, _| terminal.pause_process());
+        if paused {
+            if let Some(metadata) = self.worker_metadata.get_mut(&worker_id) {
+                metadata.status = "paused".to_string();
+            }
+            cx.notify();
+        }
+        paused
+    }
+
+    /// Resumes a paused worker's foreground process (SIGCONT).
+    pub(crate) fn control_resume(
+        &mut self,
+        worker_id: u64,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let Some(terminal) = self.terminal_for_worker(worker_id, cx) else {
+            return false;
+        };
+        let resumed = terminal.update(cx, |terminal, _| terminal.resume_process());
+        if resumed {
+            if let Some(metadata) = self.worker_metadata.get_mut(&worker_id) {
+                metadata.status = "working".to_string();
+            }
+            cx.notify();
+        }
+        resumed
     }
 
     pub fn control_close(
@@ -2811,17 +2851,20 @@ impl Render for TerminalGroup {
                         );
                         let worker_id = worker.id;
                         let is_visible = *is_visible;
+                        let is_paused = worker.status == "paused";
                         let group_for_focus = group.clone();
                         let group_for_restart = group.clone();
                         let group_for_close = group.clone();
                         let group_for_subtree = group.clone();
                         let group_for_demote = group.clone();
+                        let group_for_toggle_pause = group.clone();
                         menu = menu.submenu(label, move |menu, window, _| {
                             let group_for_focus = group_for_focus.clone();
                             let group_for_restart = group_for_restart.clone();
                             let group_for_close = group_for_close.clone();
                             let group_for_subtree = group_for_subtree.clone();
                             let group_for_demote = group_for_demote.clone();
+                            let group_for_toggle_pause = group_for_toggle_pause.clone();
                             let menu = menu.entry(
                                 "Focus Worker",
                                 None,
@@ -2834,6 +2877,21 @@ impl Render for TerminalGroup {
                                 None,
                                 window.handler_for(&group_for_restart, move |group, window, cx| {
                                     group.control_restart(worker_id, window, cx);
+                                }),
+                            );
+                            let menu = menu.entry(
+                                if is_paused {
+                                    "Resume Worker"
+                                } else {
+                                    "Pause Worker"
+                                },
+                                None,
+                                window.handler_for(&group_for_toggle_pause, move |group, _window, cx| {
+                                    if is_paused {
+                                        group.control_resume(worker_id, cx);
+                                    } else {
+                                        group.control_pause(worker_id, cx);
+                                    }
                                 }),
                             );
                             let menu = if is_visible {
@@ -3036,6 +3094,31 @@ impl TerminalGroup {
                         .on_click(cx.listener(move |this, _, window, cx| {
                             this.control_focus(worker_id, window, cx);
                         })),
+                )
+                .child(
+                    IconButton::new(
+                        "overflow-pause",
+                        if metadata.status == "paused" {
+                            IconName::PlayOutlined
+                        } else {
+                            IconName::DebugPause
+                        },
+                    )
+                    .shape(IconButtonShape::Square)
+                    .icon_size(IconSize::XSmall)
+                    .tooltip(Tooltip::text(if metadata.status == "paused" {
+                        "Resume worker"
+                    } else {
+                        "Pause worker"
+                    }))
+                    .on_click(cx.listener(move |this, _, _window, cx| {
+                        if this.worker_metadata.get(&worker_id).is_some_and(|m| m.status == "paused")
+                        {
+                            this.control_resume(worker_id, cx);
+                        } else {
+                            this.control_pause(worker_id, cx);
+                        }
+                    })),
                 )
                 .child(
                     IconButton::new("overflow-close", IconName::Close)
@@ -3680,6 +3763,64 @@ mod tests {
             })
             .expect("failed to report");
         assert!(reported, "worker self-report must resolve after demotion");
+    }
+
+    /// Pausing sets the worker's status to "paused" (SIGSTOP); resuming returns
+    /// it to "working" (SIGCONT), whether the worker is on-grid or overflowed.
+    #[gpui::test]
+    async fn test_pause_and_resume_a_worker(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        init_test(cx);
+
+        cx.update_global(|store: &mut SettingsStore, cx| {
+            store
+                .set_user_settings(r#"{"terminal_workspace": {"max_tiles": 1}}"#, cx)
+                .unwrap();
+        });
+
+        let (window, group) = init_group(cx).await;
+        cx.run_until_parked();
+
+        let worker_id = window
+            .update(cx, |_, window, cx| {
+                group.update(cx, |group, cx| {
+                    group.control_spawn(None, None, "sleep 60".to_string(), window, cx)
+                })
+            })
+            .expect("failed to spawn")
+            .expect("worker should spawn");
+        cx.run_until_parked();
+
+        let paused = window
+            .update(cx, |_, _window, cx| {
+                group.update(cx, |group, cx| group.control_pause(worker_id, cx))
+            })
+            .expect("failed to pause");
+        cx.run_until_parked();
+        assert!(paused, "pausing a live PTY worker should succeed");
+
+        group.read_with(cx, |group, _| {
+            assert_eq!(
+                group.worker_metadata.get(&worker_id).map(|m| m.status.as_str()),
+                Some("paused"),
+                "pausing should mark the worker paused"
+            );
+        });
+
+        let resumed = window
+            .update(cx, |_, _window, cx| {
+                group.update(cx, |group, cx| group.control_resume(worker_id, cx))
+            })
+            .expect("failed to resume");
+        assert!(resumed, "resuming a paused PTY worker should succeed");
+
+        group.read_with(cx, |group, _| {
+            assert_eq!(
+                group.worker_metadata.get(&worker_id).map(|m| m.status.as_str()),
+                Some("working"),
+                "resuming should return the worker to working"
+            );
+        });
     }
 
     /// Ship gate 4, at the integration level: after real layout, repeated splits

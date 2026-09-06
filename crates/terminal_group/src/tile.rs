@@ -151,6 +151,7 @@ fn render_tile_header(
         _ if running => cx.theme().status().info,
         _ => cx.theme().colors().text_disabled,
     };
+    let is_paused = worker_status.as_deref() == Some("paused");
 
     h_flex()
         .id("tile-header")
@@ -292,18 +293,51 @@ fn render_tile_header(
             }),
         )
         .when_some(worker_id, |this, worker_id| {
-            let group = group.clone();
+            let this = this.child(
+                IconButton::new(
+                    "pause-tile",
+                    if is_paused {
+                        IconName::PlayOutlined
+                    } else {
+                        IconName::DebugPause
+                    },
+                )
+                .shape(IconButtonShape::Square)
+                .icon_size(IconSize::XSmall)
+                .tooltip(Tooltip::text(if is_paused {
+                    "Resume worker"
+                } else {
+                    "Pause worker"
+                }))
+                .on_click({
+                    let group = group.clone();
+                    move |_, _window, cx| {
+                        group
+                            .update(cx, |group, cx| {
+                                if is_paused {
+                                    group.control_resume(worker_id, cx);
+                                } else {
+                                    group.control_pause(worker_id, cx);
+                                }
+                            })
+                            .ok();
+                    }
+                }),
+            );
             this.child(
                 IconButton::new("demote-tile", IconName::ChevronDown)
                     .shape(IconButtonShape::Square)
                     .icon_size(IconSize::XSmall)
                     .tooltip(Tooltip::text("Send to overflow"))
-                    .on_click(move |_, window, cx| {
-                        group
-                            .update(cx, |group, cx| {
-                                group.control_demote(worker_id, window, cx);
-                            })
-                            .ok();
+                    .on_click({
+                        let group = group.clone();
+                        move |_, window, cx| {
+                            group
+                                .update(cx, |group, cx| {
+                                    group.control_demote(worker_id, window, cx);
+                                })
+                                .ok();
+                        }
                     }),
             )
         })
