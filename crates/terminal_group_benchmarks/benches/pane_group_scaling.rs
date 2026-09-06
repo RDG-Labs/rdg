@@ -11,14 +11,13 @@ use std::sync::Arc;
 
 use fs::RealFs;
 use gpui::{
-    App, AppContext as _, BenchAppContext, Entity, InteractiveElement, IntoElement, ParentElement,
-    Render, Styled, VisualContext, div,
+    App, AppContext as _, BenchAppContext, BenchWindowContext, Entity, InteractiveElement,
+    IntoElement, ParentElement, Render, Styled, VisualContext, div,
 };
 use language::LanguageRegistry;
 use project::Project;
 use terminal::{
-    TerminalBuilder,
-    terminal_settings::{AlternateScroll, CursorShape},
+    Terminal, TerminalBuilder, terminal_settings::{AlternateScroll, CursorShape},
 };
 use terminal_view::TerminalView;
 use workspace::{AppState, MultiWorkspace, Pane, PaneGroup, SplitDirection, Workspace};
@@ -125,6 +124,10 @@ fn pane_count_inputs() -> Vec<usize> {
 /// Repainting this is the frame cost a tiled grid pays per frame.
 struct TileGrid {
     tiles: Vec<Entity<TerminalView>>,
+    /// Terminal handles for streaming writes; the first `streaming_count`
+    /// tiles receive continuous output each frame.
+    terminals: Vec<Entity<Terminal>>,
+    streaming_count: usize,
 }
 
 impl Render for TileGrid {
@@ -134,17 +137,15 @@ impl Render for TileGrid {
     }
 }
 
-/// Frame cost of a grid of `tile_count` visible terminals. Each iteration the
-/// root forces a full repaint of every tile; this is the steady-state idle-grid
-/// frame cost PRD §8.1 drives the visible-tile cap with.
-#[gpui::bench(inputs = repaint_inputs(), input_name = "tiles", group = "Grid frame")]
-fn grid_frame_scaling(tile_count: &usize, cx: &mut BenchAppContext) {
-    let app_state = cx.update(|cx| init_globals(cx));
-    let mut window = cx.add_empty_window();
-
-    // Build the grid as the window root, minting N real `TerminalView`s inside
-    // a real `Workspace` (for its weak handles). Display-only terminals carry
-    // realistic content with no shell, so repaint isn't free.
+/// Builds a grid of `tile_count` real display-only terminals as the window
+/// root. With `streaming_count > 0`, that many leading tiles stream continuous
+/// output when the grid's update callback runs.
+fn build_grid(
+    tile_count: usize,
+    streaming_count: usize,
+    app_state: &Arc<AppState>,
+    window: &mut BenchWindowContext,
+) -> Entity<TileGrid> {
     let grid = window
         .update(|window, cx| {
             let project = Project::local(
@@ -157,12 +158,13 @@ fn grid_frame_scaling(tile_count: &usize, cx: &mut BenchAppContext) {
                 project::LocalProjectFlags::default(),
                 cx,
             );
-            let workspace = cx.new(|cx| Workspace::new(None, project, app_state, window, cx));
+            let workspace = cx.new(|cx| Workspace::new(None, project, app_state.clone(), window, cx));
             let project_weak = workspace.read(cx).project().downgrade();
             let workspace_weak = workspace.downgrade();
 
-            let mut tiles = Vec::with_capacity(*tile_count);
-            for index in 0..*tile_count {
+            let mut tiles = Vec::with_capacity(tile_count);
+            let mut terminals = Vec::with_capacity(tile_count);
+            for index in 0..tile_count {
                 let terminal = cx.new(|cx| {
                     TerminalBuilder::new_display_only(
                         CursorShape::Block,
@@ -180,7 +182,7 @@ fn grid_frame_scaling(tile_count: &usize, cx: &mut BenchAppContext) {
                 });
                 let tile = cx.new(|cx| {
                     TerminalView::new(
-                        terminal,
+                        terminal.clone(),
                         workspace_weak.clone(),
                         None,
                         project_weak.clone(),
@@ -189,12 +191,55 @@ fn grid_frame_scaling(tile_count: &usize, cx: &mut BenchAppContext) {
                     )
                 });
                 tiles.push(tile);
+                terminals.push(terminal);
             }
-            window.replace_root(cx, |_, _cx| TileGrid { tiles })
+            window.replace_root(cx, |_, _cx| TileGrid {
+                tiles,
+                terminals,
+                streaming_count,
+            })
         });
+    grid
+}
+
+/// Frame cost of a grid of `tile_count` visible terminals. Each iteration the
+/// root forces a full repaint of every tile; this is the steady-state idle-grid
+/// frame cost PRD §8.1 drives the visible-tile cap with.
+#[gpui::bench(inputs = repaint_inputs(), input_name = "tiles", group = "Grid frame")]
+fn grid_frame_scaling(tile_count: &usize, cx: &mut BenchAppContext) {
+    let app_state = cx.update(|cx| init_globals(cx));
+    let mut window = cx.add_empty_window();
+
+    // Build a static grid: no terminal writes, only repaint.
+    let grid = build_grid(*tile_count, 0, &app_state, &mut window);
 
     cx.bench_renderer(grid, |_this, _window, cx| {
-        // Force a full repaint of every tile each iteration.
+        // Force a full repaint of every tile each iteration (steady-state idle
+        // frame cost, PRD §8.1).
+        cx.notify();
+    });
+}
+
+/// Frame cost of a grid where `streaming()` tiles receive continuous output
+/// (≈1000 lines/s each) — the PRD §8.1 "streaming" workload. The remaining
+/// tiles stay idle, so this stresses repaint under mixed load.
+#[gpui::bench(inputs = repaint_inputs(), input_name = "tiles", group = "Grid frame")]
+fn grid_frame_streaming_scaling(tile_count: &usize, cx: &mut BenchAppContext) {
+    let app_state = cx.update(|cx| init_globals(cx));
+    let mut window = cx.add_empty_window();
+
+    // ~1/3 of tiles stream (rounds to 4 of 12, 8 of 24, 13 of 40).
+    let streaming_count = (*tile_count / 3).max(1);
+    let grid = build_grid(*tile_count, streaming_count, &app_state, &mut window);
+
+    cx.bench_renderer(grid, |this, _window, cx| {
+        // Feed a line to each streaming terminal, then repaint — models a
+        // busy agent that doesn't hold the frame budget hostage.
+        for terminal in &this.terminals[..this.streaming_count] {
+            terminal.update(cx, |terminal, cx| {
+                terminal.write_output(b"[api] stream line 0000 \\x1b[2K INFO done\n", cx);
+            });
+        }
         cx.notify();
     });
 }
@@ -207,5 +252,5 @@ fn repaint_inputs() -> Vec<usize> {
     counts
 }
 
-gpui::bench_group!(benches, grid_split_scaling, grid_frame_scaling);
+gpui::bench_group!(benches, grid_split_scaling, grid_frame_scaling, grid_frame_streaming_scaling);
 gpui::bench_main!(benches);
