@@ -234,6 +234,154 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  build_linux_aarch64:
+    name: Build Linux aarch64
+    needs:
+      - validate_tag
+      - prepare_release
+    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    env:
+      RELEASE_VERSION: ${{ needs.validate_tag.outputs.version }}
+      RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+      ZED_RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+      ZED_APP_VERSION: ${{ needs.validate_tag.outputs.app_version }}
+      ZIG_VERSION: 0.16.0
+      CARGO_TARGET_DIR: target-zig-aarch64
+      PKG_CONFIG_ALLOW_CROSS: "1"
+      PKG_CONFIG_LIBDIR: /usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
+        with:
+          ref: ${{ needs.prepare_release.outputs.commit }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        with:
+          cache-targets: true
+
+      - name: Install Linux dependencies
+        run: ./script/linux
+
+      - name: Install aarch64 sysroot and libraries
+        run: |
+          set -euo pipefail
+          sudo dpkg --add-architecture arm64
+          for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
+            if [[ -f "$source" ]]; then
+              sudo sed -i -E '/^deb / { /^deb \[/! s/^deb( +)/deb [arch=amd64]\1/; }' "$source"
+            fi
+          done
+          sudo tee /etc/apt/sources.list.d/arm64-ports.list >/dev/null <<'EOF'
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse
+          EOF
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libc6-dev-arm64-cross \
+            libasound2-dev:arm64 \
+            libfontconfig-dev:arm64 \
+            libgit2-dev:arm64 \
+            libglib2.0-dev:arm64 \
+            libsqlite3-dev:arm64 \
+            libssl-dev:arm64 \
+            libva-dev:arm64 \
+            libvulkan-dev:arm64 \
+            libwayland-dev:arm64 \
+            libx11-xcb-dev:arm64 \
+            libxkbcommon-x11-dev:arm64 \
+            libzstd-dev:arm64
+
+      - name: Install WASI SDK
+        run: ./script/download-wasi-sdk
+
+      - name: Install Zig
+        uses: goto-bus-stop/setup-zig@abea47f85e598557f500fa1fd2ab7464fcb39406 # v2.2.1
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Configure cross toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add aarch64-unknown-linux-gnu
+          cat > "$RUNNER_TEMP/zig-aarch64-cc" <<EOF
+          #!/usr/bin/env bash
+          arguments=()
+          for argument in "\$@"; do
+            if [[ "\$argument" == "-fsanitize-undefined-strip-path-components=-1" ]]; then
+              continue
+            elif [[ "\$argument" == "--target=aarch64-unknown-linux-gnu" ]]; then
+              argument="--target=aarch64-linux-gnu"
+            fi
+            arguments+=("\$argument")
+          done
+          arguments+=("-fno-sanitize=undefined")
+          exec "$(command -v zig)" cc "\${arguments[@]}"
+          EOF
+          cat > "$RUNNER_TEMP/zig-aarch64-cxx" <<EOF
+          #!/usr/bin/env bash
+          arguments=()
+          for argument in "\$@"; do
+            if [[ "\$argument" == "-fsanitize-undefined-strip-path-components=-1" ]]; then
+              continue
+            elif [[ "\$argument" == "--target=aarch64-unknown-linux-gnu" ]]; then
+              argument="--target=aarch64-linux-gnu"
+            fi
+            arguments+=("\$argument")
+          done
+          arguments+=("-fno-sanitize=undefined")
+          exec "$(command -v zig)" c++ "\${arguments[@]}"
+          EOF
+          cat > "$RUNNER_TEMP/aarch64-linker" <<'EOF'
+          #!/usr/bin/env bash
+          arguments=()
+          for argument in "$@"; do
+            [[ "$argument" == "-fuse-ld=lld" ]] && continue
+            arguments+=("$argument")
+          done
+          exec /usr/bin/aarch64-linux-gnu-gcc "${arguments[@]}"
+          EOF
+          chmod +x "$RUNNER_TEMP/zig-aarch64-cc" "$RUNNER_TEMP/zig-aarch64-cxx" "$RUNNER_TEMP/aarch64-linker"
+          {
+            echo "CC=/usr/bin/clang"
+            echo "CXX=/usr/bin/clang++"
+            echo "CC_aarch64_unknown_linux_gnu=$RUNNER_TEMP/zig-aarch64-cc"
+            echo "CXX_aarch64_unknown_linux_gnu=$RUNNER_TEMP/zig-aarch64-cxx"
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=$RUNNER_TEMP/aarch64-linker"
+          } >> "$GITHUB_ENV"
+
+      - name: Build Rdg
+        run: cargo build --release --package rdg --target aarch64-unknown-linux-gnu
+
+      - name: Package Rdg
+        run: |
+          set -euo pipefail
+          mkdir -p dist/rdg
+          cp "$CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release/rdg" dist/rdg/rdg
+          cp LICENSE-APACHE LICENSE-GPL dist/rdg/
+          case "$RELEASE_CHANNEL" in
+            stable) icon_source="crates/rdg/resources/app-icon.png" ;;
+            preview) icon_source="crates/rdg/resources/app-icon-preview.png" ;;
+            *) echo "Unsupported release channel: $RELEASE_CHANNEL" >&2; exit 1 ;;
+          esac
+          cp "$icon_source" dist/rdg/app-icon.png
+          tar -C dist -czf rdg-linux-aarch64.tar.gz rdg
+
+      - name: Upload Linux aarch64 artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rdg-linux-aarch64
+          path: rdg-linux-aarch64.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
   build_macos:
     name: Build macOS ${{ matrix.arch }}
     needs:
@@ -473,6 +621,51 @@ jobs:
           tag="$RELEASE_TAG"
           repo="$GITHUB_REPOSITORY"
           asset="release-assets/rdg-linux-x86_64.tar.gz"
+          if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+            gh release upload "$tag" --repo "$repo" "$asset" --clobber
+          else
+            release_options=(--title "Rdg ${tag#v}" --generate-notes)
+            if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+              release_options+=(--verify-tag)
+            else
+              release_options+=(--target "$RELEASE_TARGET")
+            fi
+            [[ "$RELEASE_CHANNEL" == "preview" ]] && release_options+=(--prerelease)
+            gh release create "$tag" --repo "$repo" "$asset" "${release_options[@]}"
+          fi
+
+  publish_linux_aarch64:
+    name: Publish Linux aarch64 artifact
+    needs:
+      - validate_tag
+      - prepare_release
+      - build_linux_aarch64
+    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success' && needs.build_linux_aarch64.result == 'success'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    concurrency:
+      group: release-publish-${{ needs.validate_tag.outputs.tag }}
+      cancel-in-progress: false
+    env:
+      RELEASE_TAG: ${{ needs.validate_tag.outputs.tag }}
+      RELEASE_CHANNEL: ${{ needs.validate_tag.outputs.channel }}
+      RELEASE_TARGET: ${{ needs.prepare_release.outputs.commit }}
+    steps:
+      - name: Download Linux aarch64 artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: rdg-linux-aarch64
+          path: release-assets
+
+      - name: Upload aarch64 asset to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          repo="$GITHUB_REPOSITORY"
+          asset="release-assets/rdg-linux-aarch64.tar.gz"
           if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
             gh release upload "$tag" --repo "$repo" "$asset" --clobber
           else

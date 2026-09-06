@@ -137,10 +137,54 @@ jobs:
           qemu-aarch64-static "$binary" --help >/dev/null 2>&1
           echo "Runs under ARM64 emulation"
 
-      - name: Upload aarch64 binary
+      - name: Package aarch64 binary
+        run: |
+          set -euo pipefail
+          mkdir -p dist/rdg
+          cp "$CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release/rdg" dist/rdg/rdg
+          cp LICENSE-APACHE LICENSE-GPL dist/rdg/
+          cp crates/rdg/resources/app-icon.png dist/rdg/app-icon.png
+          tar -C dist -czf rdg-linux-aarch64.tar.gz rdg
+
+      - name: Upload aarch64 artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: rdg-linux-aarch64-zig
-          path: ${{ env.CARGO_TARGET_DIR }}/aarch64-unknown-linux-gnu/release/rdg
+          path: rdg-linux-aarch64.tar.gz
           if-no-files-found: error
           retention-days: 30
+
+  runtime:
+    name: Runtime test Linux aarch64 (native)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    needs: build
+    steps:
+      - name: Download aarch64 artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: rdg-linux-aarch64-zig
+          path: dist
+
+      - name: Install runtime libraries
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2 libfontconfig1 libsqlite3-0 libxcb1 \
+            libxkbcommon-x11-0 libwayland-client0 libx11-xcb1
+
+      - name: Extract and verify
+        run: |
+          set -euo pipefail
+          tar -xzf dist/rdg-linux-aarch64.tar.gz -C .
+          machine=$(file rdg/rdg | grep -o 'ARM aarch64')
+          test -n "$machine"
+          echo "Native ARM64 binary OK: $machine"
+
+      - name: Native runtime smoke test
+        run: |
+          set -euo pipefail
+          ./rdg/rdg --help >/dev/null 2>&1
+          echo "Runs natively on ARM64"
+
