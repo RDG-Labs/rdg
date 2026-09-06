@@ -155,20 +155,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
-            python3 - <<'PY'
-            import re
-            from pathlib import Path
-
-            version = "${{ needs.validate_tag.outputs.version }}"
-            for filename in ("crates/rdg/Cargo.toml", "Cargo.lock"):
-                path = Path(filename)
-                content = path.read_text()
-                pattern = r'(?m)(^name = "rdg"\nversion = ")[^"]+("$)'
-                updated, count = re.subn(pattern, rf'\g<1>{version}\g<2>', content)
-                if count != 1:
-                    raise SystemExit(f"expected one rdg package version in {filename}, found {count}")
-                path.write_text(updated)
-            PY
+            ./script/bump-rdg-version "$RELEASE_VERSION"
 
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
