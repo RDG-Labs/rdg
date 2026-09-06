@@ -114,7 +114,10 @@ Next (Increment B):
 - Restore the overflow set on restart within the same layout guarantees.
   **Shipped**: overflow workers' commands are serialized with the layout and
   re-spawned on restore (live PTYs can't survive a restart without a daemon;
-  the set and its commands are preserved).
+  the set and its commands are preserved). **Known limitation**: worker ids and
+  parent/child links are reassigned on restore, so the Mission Control
+  orchestration tree flattens to roots after a restart — the workers still run
+  and are supervised, but their hierarchy isn't shown.
 
   The `Worker` object is the seam where Phase 4's headless/background workers
   slot in later — never headless in v0.3, always a real attached PTY.
