@@ -1,0 +1,50 @@
+name: Propose an improvement
+description: Suggest a focused improvement that fits Rdg's local-first, terminal-first direction.
+type: Feature
+labels: "state:needs triage"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search [existing issues](https://github.com/RDG-Labs/rdg/issues) and the [roadmap](https://github.com/RDG-Labs/rdg/blob/main/product/ROADMAP.md) first.
+
+        Rdg does not plan AI services, telemetry, accounts, or multiplayer collaboration.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem or workflow is blocked today?
+      placeholder: I run several services and lose track of which terminal owns each process.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed improvement
+      description: Describe the smallest change that would solve the problem.
+      placeholder: Show the foreground process and exit status in each terminal tile header.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What do you do today, and why is it not enough?
+    validations:
+      required: false
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: Where would this help? Use all, macOS, Linux, or Windows.
+      placeholder: all
+    validations:
+      required: true
+  - type: textarea
+    id: success
+    attributes:
+      label: Success condition
+      description: How would we know this is working?
+      placeholder: A user can identify a failed process without focusing each terminal.
+    validations:
+      required: true

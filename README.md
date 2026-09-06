@@ -3,20 +3,32 @@
 
 # Rdg
 
-Rdg is a code editor built around a tiled terminal workspace. It is a fork of
-[Zed](https://github.com/zed-industries/zed), reshaped around three decisions:
+<div align="center">
 
-- **Terminals are first-class.** A directly manipulable tiled terminal grid lives next to
-  your file tabs, sharing the project, file explorer, keymap, theme, and task system —
-  rather than being confined to a dock strip. See the
-  [terminal documentation](./docs/src/terminal.md).
-- **No AI.** The agent panel, model providers, edit prediction, and related settings are
-  removed. Rdg does not talk to a language model.
-- **No account, no telemetry.** Sign-in and telemetry initialization are removed; Rdg starts
-  and runs without contacting a server.
+**A local-first code editor for people who live in the terminal.**
 
-Everything else Zed does well — the editor core, LSP, extensions, debugger, Git integration —
-is intact.
+[![Latest release](https://img.shields.io/github/v/release/RDG-Labs/rdg?display_name=tag&sort=semver)](https://github.com/RDG-Labs/rdg/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/RDG-Labs/rdg/ci.yml?branch=main&label=build)](https://github.com/RDG-Labs/rdg/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-GPL--3.0%20%2F%20Apache--2.0-blue)](#licensing)
+[![Roadmap](https://img.shields.io/badge/roadmap-read-7c3aed)](./product/ROADMAP.md)
+
+</div>
+
+Rdg is a fork of [Zed](https://github.com/zed-industries/zed) shaped around one
+idea: the editor and the terminal should be one workspace. Open multiple shells
+as a tiled terminal group, run services and coding CLIs side by side, and keep
+editing in the same project.
+
+## What makes Rdg different
+
+- **Terminal-first.** Tiled terminal groups are regular workspace items beside
+  editor tabs, sharing the project, file explorer, keymap, theme, and tasks.
+- **Local-first.** No account, telemetry, AI service, or multiplayer backend is
+  required. Rdg starts and works without contacting a server.
+- **Open-source foundation.** The editor core, LSP, extensions, debugger, and
+  Git integration come from Zed's strong foundation.
+
+[Read the roadmap](./product/ROADMAP.md) · [View the project board](https://github.com/orgs/RDG-Labs/projects/1) · [Open an issue](https://github.com/RDG-Labs/rdg/issues/new/choose) · [Read terminal docs](./docs/src/terminal.md)
 
 ## Relationship to Zed
 
@@ -26,9 +38,10 @@ supported by Zed Industries. Please do not report Rdg issues to the upstream pro
 
 The fork's divergence from upstream is documented patch by patch in [patches.md](./patches.md).
 
-## Building Rdg
+## Install or build
 
-There are no prebuilt binaries yet; build from source.
+Published release artifacts are available on the [Releases page](https://github.com/RDG-Labs/rdg/releases).
+For development or unsupported platforms, build from source:
 
 - [Building Rdg for macOS](./docs/src/development/macos.md)
 - [Building Rdg for Linux](./docs/src/development/linux.md)
@@ -53,9 +66,11 @@ structured events, report status, and coordinate recursive Terminal Group worker
 You can also use **+ → Install RDG Orchestration Skill…** from a Terminal Group. Rdg opens
 the visible interactive install command in a terminal rather than running `npx` invisibly.
 
-## Contributing
+## Roadmap and contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
+See the [roadmap](./product/ROADMAP.md) for product direction and
+[CONTRIBUTING.md](./CONTRIBUTING.md) for development guidelines. Bug reports,
+small fixes, and documentation improvements are welcome.
 
 ## Licensing
 
