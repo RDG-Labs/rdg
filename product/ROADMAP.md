@@ -100,11 +100,11 @@ Next (Increment B):
 - Promote an overflow worker to a visible tile **preserving the live process**
   (its terminal is re-homed into a new tile). Shipped: focus/"promote" from the
   overflow strip or Mission Control grows the grid, re-using the same PTY.
-- Demote a visible tile back to overflow is **deferred**: detaching a live
-  terminal from a `Pane` without closing it is architecturally risky, and
-  hiding a worker you can already see is a rarer need than surfacing one you
-  can't. If demand appears, it re-homes the tile's terminal into the overflow
-  set the same way promotion works in reverse.
+- Demote a visible tile back to overflow is **shipped**: "Send to overflow"
+  from the tile header or Mission Control re-homes the tile's `Terminal`/PTY
+  into the overflow set under the same stable id. Retaining the `Entity<Terminal>`
+  keeps the process alive while the tile's view is dropped, so the earlier
+  "architecturally risky" concern did not materialize.
 - Worker lookup stays O(1) by `worker_id` (already keyed by hash map, never a
   tree walk).
 - Pause/resume a worker from a row without hunting its tile.
