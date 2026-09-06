@@ -30,6 +30,17 @@ jobs:
         run: |
           set -euo pipefail
           sudo dpkg --add-architecture arm64
+          for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
+            if [[ -f "$source" ]]; then
+              sudo sed -i -E 's/^deb( +)/deb [arch=amd64]\1/' "$source"
+            fi
+          done
+          sudo tee /etc/apt/sources.list.d/arm64-ports.list >/dev/null <<'EOF'
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
+          deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse
+          EOF
           sudo apt-get update
           sudo apt-get install -y \
             gcc-aarch64-linux-gnu \
