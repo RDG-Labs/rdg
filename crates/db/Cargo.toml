@@ -15,6 +15,10 @@ doctest = false
 [features]
 test-support = []
 
+# As `test-support`, but a production-faithful token so benchmark graphs get an
+# in-memory database without enabling `test-support` or its doubles.
+bench-support = []
+
 [dependencies]
 anyhow.workspace = true
 gpui.workspace = true

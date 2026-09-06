@@ -75,6 +75,18 @@ impl AppDatabase {
         Self(connection)
     }
 
+    /// Creates a fresh in-memory database for benchmarks, running all
+    /// inventory-registered migrations, without touching the production
+    /// database or enabling `test-support`. Mirrors [`Self::test_new`] but uses
+    /// the production in-memory builder so benchmark graphs stay
+    /// `test-support`-free.
+    #[cfg(feature = "bench-support")]
+    pub fn bench_new() -> Self {
+        let name = format!("bench-db-{}", uuid::Uuid::new_v4());
+        let connection = gpui::block_on(open_bench_db::<AppMigrator>(&name));
+        Self(connection)
+    }
+
     /// Returns the per-App connection if set, otherwise falls back to
     /// the shared LazyLock.
     pub fn global(cx: &App) -> &ThreadSafeConnection {
@@ -236,6 +248,20 @@ pub async fn open_test_db<M: Migrator>(db_name: &str) -> ThreadSafeConnection {
         .build()
         .await
         .unwrap()
+}
+
+/// Opens a fresh in-memory database for benchmarks, using the same production
+/// builder as [`open_fallback_db`] so measurements see the real write/read path.
+/// Available only under `bench-support` so benchmark graphs never enable
+/// `test-support`.
+#[cfg(feature = "bench-support")]
+pub async fn open_bench_db<M: Migrator>(db_name: &str) -> ThreadSafeConnection {
+    ThreadSafeConnection::builder::<M>(db_name, false)
+        .with_db_initialization_query(DB_INITIALIZE_QUERY)
+        .with_connection_initialize_query(CONNECTION_INITIALIZE_QUERY)
+        .build()
+        .await
+        .expect("in-memory benchmark database failed to initialize")
 }
 
 /// Implements a basic DB wrapper for a given domain

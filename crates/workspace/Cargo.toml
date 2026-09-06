@@ -25,6 +25,14 @@ test-support = [
     "fs/test-support",
 ]
 
+# Production-faithful benchmark construction: enables the workspace to build a
+# real `AppState` without pulling `test-support` or its doubles. Propagates only
+# narrow `bench-support` seams; never `test-support`.
+bench-support = [
+    "session/bench-support",
+    "db/bench-support",
+]
+
 [dependencies]
 any_vec.workspace = true
 anyhow.workspace = true

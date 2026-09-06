@@ -17,6 +17,10 @@ test-support = [
     "db/test-support",
 ]
 
+# As `test-support`, but a production-faithful token that benchmark graphs can
+# enable without pulling in the `test-support` feature or any of its doubles.
+bench-support = []
+
 [dependencies]
 db.workspace = true
 gpui.workspace = true
