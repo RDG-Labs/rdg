@@ -32,7 +32,7 @@ jobs:
           sudo dpkg --add-architecture arm64
           for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
             if [[ -f "$source" ]]; then
-              sudo sed -i -E 's/^deb( +)/deb [arch=amd64]\1/' "$source"
+              sudo sed -i -E '/^deb / { /^deb \[/! s/^deb( +)/deb [arch=amd64]\1/; }' "$source"
             fi
           done
           sudo tee /etc/apt/sources.list.d/arm64-ports.list >/dev/null <<'EOF'
