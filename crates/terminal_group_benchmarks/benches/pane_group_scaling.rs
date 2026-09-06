@@ -17,7 +17,8 @@ use gpui::{
 use language::LanguageRegistry;
 use project::Project;
 use terminal::{
-    Terminal, TerminalBuilder, terminal_settings::{AlternateScroll, CursorShape},
+    Terminal, TerminalBuilder,
+    terminal_settings::{AlternateScroll, CursorShape},
 };
 use terminal_view::TerminalView;
 use workspace::{AppState, MultiWorkspace, Pane, PaneGroup, SplitDirection, Workspace};
@@ -131,8 +132,16 @@ struct TileGrid {
 }
 
 impl Render for TileGrid {
-    fn render(&mut self, _window: &mut gpui::Window, _cx: &mut gpui::Context<Self>) -> impl IntoElement {
-        div().flex().flex_col().size_full().id("tile-grid")
+    fn render(
+        &mut self,
+        _window: &mut gpui::Window,
+        _cx: &mut gpui::Context<Self>,
+    ) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .id("tile-grid")
             .children(self.tiles.iter().cloned().collect::<Vec<_>>())
     }
 }
@@ -146,59 +155,58 @@ fn build_grid(
     app_state: &Arc<AppState>,
     window: &mut BenchWindowContext,
 ) -> Entity<TileGrid> {
-    let grid = window
-        .update(|window, cx| {
-            let project = Project::local(
-                app_state.client.clone(),
-                app_state.node_runtime.clone(),
-                app_state.user_store.clone(),
-                app_state.languages.clone(),
-                app_state.fs.clone(),
-                None,
-                project::LocalProjectFlags::default(),
-                cx,
-            );
-            let workspace = cx.new(|cx| Workspace::new(None, project, app_state.clone(), window, cx));
-            let project_weak = workspace.read(cx).project().downgrade();
-            let workspace_weak = workspace.downgrade();
+    let grid = window.update(|window, cx| {
+        let project = Project::local(
+            app_state.client.clone(),
+            app_state.node_runtime.clone(),
+            app_state.user_store.clone(),
+            app_state.languages.clone(),
+            app_state.fs.clone(),
+            None,
+            project::LocalProjectFlags::default(),
+            cx,
+        );
+        let workspace = cx.new(|cx| Workspace::new(None, project, app_state.clone(), window, cx));
+        let project_weak = workspace.read(cx).project().downgrade();
+        let workspace_weak = workspace.downgrade();
 
-            let mut tiles = Vec::with_capacity(tile_count);
-            let mut terminals = Vec::with_capacity(tile_count);
-            for index in 0..tile_count {
-                let terminal = cx.new(|cx| {
-                    TerminalBuilder::new_display_only(
-                        CursorShape::Block,
-                        AlternateScroll::On,
-                        None,
-                        0,
-                        cx.background_executor(),
-                        util::paths::PathStyle::local(),
-                    )
-                    .subscribe(cx)
-                });
-                terminal.update(cx, |terminal, cx| {
-                    let line = format!("[api:{index} INFO] request handled in 12ms\n");
-                    terminal.write_output(line.as_bytes(), cx);
-                });
-                let tile = cx.new(|cx| {
-                    TerminalView::new(
-                        terminal.clone(),
-                        workspace_weak.clone(),
-                        None,
-                        project_weak.clone(),
-                        window,
-                        cx,
-                    )
-                });
-                tiles.push(tile);
-                terminals.push(terminal);
-            }
-            window.replace_root(cx, |_, _cx| TileGrid {
-                tiles,
-                terminals,
-                streaming_count,
-            })
-        });
+        let mut tiles = Vec::with_capacity(tile_count);
+        let mut terminals = Vec::with_capacity(tile_count);
+        for index in 0..tile_count {
+            let terminal = cx.new(|cx| {
+                TerminalBuilder::new_display_only(
+                    CursorShape::Block,
+                    AlternateScroll::On,
+                    None,
+                    0,
+                    cx.background_executor(),
+                    util::paths::PathStyle::local(),
+                )
+                .subscribe(cx)
+            });
+            terminal.update(cx, |terminal, cx| {
+                let line = format!("[api:{index} INFO] request handled in 12ms\n");
+                terminal.write_output(line.as_bytes(), cx);
+            });
+            let tile = cx.new(|cx| {
+                TerminalView::new(
+                    terminal.clone(),
+                    workspace_weak.clone(),
+                    None,
+                    project_weak.clone(),
+                    window,
+                    cx,
+                )
+            });
+            tiles.push(tile);
+            terminals.push(terminal);
+        }
+        window.replace_root(cx, |_, _cx| TileGrid {
+            tiles,
+            terminals,
+            streaming_count,
+        })
+    });
     grid
 }
 
@@ -252,5 +260,10 @@ fn repaint_inputs() -> Vec<usize> {
     counts
 }
 
-gpui::bench_group!(benches, grid_split_scaling, grid_frame_scaling, grid_frame_streaming_scaling);
+gpui::bench_group!(
+    benches,
+    grid_split_scaling,
+    grid_frame_scaling,
+    grid_frame_streaming_scaling
+);
 gpui::bench_main!(benches);
