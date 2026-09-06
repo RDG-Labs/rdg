@@ -98,8 +98,13 @@ Shipped (Increment A):
 Next (Increment B):
 
 - Promote an overflow worker to a visible tile **preserving the live process**
-  (swap its terminal into a tile), and demote a visible tile back to overflow.
-  Currently overflow focus is a no-op and restart re-spawns the worker.
+  (its terminal is re-homed into a new tile). Shipped: focus/"promote" from the
+  overflow strip or Mission Control grows the grid, re-using the same PTY.
+- Demote a visible tile back to overflow is **deferred**: detaching a live
+  terminal from a `Pane` without closing it is architecturally risky, and
+  hiding a worker you can already see is a rarer need than surfacing one you
+  can't. If demand appears, it re-homes the tile's terminal into the overflow
+  set the same way promotion works in reverse.
 - Worker lookup stays O(1) by `worker_id` (already keyed by hash map, never a
   tree walk).
 - Pause/resume a worker from a row without hunting its tile.
