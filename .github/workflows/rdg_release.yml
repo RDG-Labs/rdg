@@ -25,6 +25,25 @@ on:
           - rc
           - alpha
           - beta
+      platform:
+        description: Platforms to build and publish
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - linux
+          - linux_aarch64
+          - macos
+          - windows
+      existing_release_tag:
+        description: >-
+          Retry publishing an already-created release (e.g. v0.3.0 or
+          v0.3.0-rc.1) without bumping the version. Use when one platform
+          failed after others already published; pick the failed platform
+          above. The tag must already exist.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -46,6 +65,8 @@ jobs:
       app_version: ${{ steps.release.outputs.app_version }}
       channel: ${{ steps.release.outputs.channel }}
       tag: ${{ steps.release.outputs.tag }}
+      retry: ${{ steps.release.outputs.retry }}
+      build_platform: ${{ steps.release.outputs.build_platform }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -55,8 +76,58 @@ jobs:
       - name: Validate or calculate release
         id: release
         shell: bash
+        env:
+          BUILD_PLATFORM: ${{ github.event_name == 'workflow_dispatch' && inputs.platform || 'all' }}
+          EXISTING_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.existing_release_tag || '' }}
         run: |
           set -euo pipefail
+
+          # Retry path: re-publish one platform to an already-created release
+          # without bumping the version. Tag must exist and must be contained in
+          # its release branch (so we never republish stale artifacts).
+          if [[ -n "${EXISTING_RELEASE_TAG:-}" ]]; then
+            echo "Retry mode: re-publishing ${EXISTING_RELEASE_TAG} (platform: ${BUILD_PLATFORM})"
+            git fetch --tags --force
+            if ! git rev-parse --verify --quiet "refs/tags/${EXISTING_RELEASE_TAG}" >/dev/null; then
+              echo "Release tag ${EXISTING_RELEASE_TAG} does not exist. It must be created by a prior run." >&2
+              exit 1
+            fi
+            if [[ "${BUILD_PLATFORM}" == "all" ]]; then
+              echo "existing_release_tag requires a specific platform, not 'all'." >&2
+              exit 1
+            fi
+            if [[ "${EXISTING_RELEASE_TAG}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-(rc|alpha|beta)\.([0-9]+)$ ]]; then
+              version="${BASH_REMATCH[1]}"
+              app_version="${EXISTING_RELEASE_TAG#v}"
+              channel=preview
+            elif [[ "${EXISTING_RELEASE_TAG}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              version="${BASH_REMATCH[1]}"
+              app_version="$version"
+              channel=stable
+            else
+              echo "Unsupported release tag for retry: ${EXISTING_RELEASE_TAG}" >&2
+              exit 1
+            fi
+            release_branch="release/v${version}"
+            git fetch --no-tags origin "refs/heads/${release_branch}:refs/remotes/origin/${release_branch}"
+            if ! git rev-parse --verify --quiet "refs/remotes/origin/${release_branch}" >/dev/null; then
+              echo "release branch ${release_branch} does not exist." >&2
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "refs/tags/${EXISTING_RELEASE_TAG}" "refs/remotes/origin/${release_branch}"; then
+              echo "Tag ${EXISTING_RELEASE_TAG} is not contained in ${release_branch}; refusing to republish stale artifacts." >&2
+              exit 1
+            fi
+            {
+              echo "version=$version"
+              echo "app_version=$app_version"
+              echo "channel=$channel"
+              echo "tag=${EXISTING_RELEASE_TAG}"
+              echo "retry=true"
+              echo "build_platform=${BUILD_PLATFORM}"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           package_version="$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[] | select(.name == "rdg") | .version')"
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
@@ -129,6 +200,8 @@ jobs:
             echo "app_version=$app_version"
             echo "channel=$channel"
             echo "tag=$tag"
+            echo "retry=${RETRY_FLAG:-false}"
+            echo "build_platform=${BUILD_PLATFORM}"
           } >> "$GITHUB_OUTPUT"
 
   prepare_release:
@@ -155,6 +228,14 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "${{ needs.validate_tag.outputs.retry }}" == "true" ]]; then
+              # Retry: build from the existing release branch head (contains the
+              # fix). Do not bump the version again.
+              git fetch --no-tags origin "refs/heads/release/v$RELEASE_VERSION:refs/remotes/origin/release/v$RELEASE_VERSION"
+              git checkout "refs/remotes/origin/release/v$RELEASE_VERSION"
+              echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             ./script/bump-rdg-version "$RELEASE_VERSION"
 
             git config user.name "github-actions[bot]"
@@ -171,7 +252,7 @@ jobs:
     needs:
       - validate_tag
       - prepare_release
-    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success'
+    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success' && (needs.validate_tag.outputs.build_platform == 'all' || needs.validate_tag.outputs.build_platform == 'linux')
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     env:
@@ -235,7 +316,7 @@ jobs:
     needs:
       - validate_tag
       - prepare_release
-    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success'
+    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success' && (needs.validate_tag.outputs.build_platform == 'all' || needs.validate_tag.outputs.build_platform == 'linux_aarch64')
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     env:
@@ -392,7 +473,7 @@ jobs:
     needs:
       - validate_tag
       - prepare_release
-    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success'
+    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success' && (needs.validate_tag.outputs.build_platform == 'all' || needs.validate_tag.outputs.build_platform == 'macos')
     strategy:
       fail-fast: false
       matrix:
@@ -517,7 +598,7 @@ jobs:
     needs:
       - validate_tag
       - prepare_release
-    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success'
+    if: always() && needs.validate_tag.result == 'success' && needs.prepare_release.result == 'success' && (needs.validate_tag.outputs.build_platform == 'all' || needs.validate_tag.outputs.build_platform == 'windows')
     runs-on: windows-2022
     timeout-minutes: 180
     env:
