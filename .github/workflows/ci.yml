@@ -29,7 +29,6 @@ jobs:
     outputs:
       changed_packages: ${{ steps.filter.outputs.changed_packages }}
       run_tests: ${{ steps.filter.outputs.run_tests }}
-      slow_needed: ${{ steps.filter.outputs.slow_needed }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
@@ -50,17 +49,14 @@ jobs:
             COMPARE_REV="$(git merge-base "origin/${GITHUB_BASE_REF}" HEAD)"
           fi
           CHANGED_FILES="$(git diff --name-only "$COMPARE_REV" "$GITHUB_SHA")"
-          FILE_CHANGED_PKGS=""
 
           # Manual dispatch always runs the full suite. Pull requests and branch
           # pushes compute the minimal set of changed packages and their
-          # dependents so CI stays fast for everyday work (a full suite is
-          # available via manual dispatch).
+          # dependents so CI stays fast for everyday work.
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             echo "Manual dispatch, running full test suite"
             echo "changed_packages=" >> "$GITHUB_OUTPUT"
             echo "run_tests=true" >> "$GITHUB_OUTPUT"
-            echo "slow_needed=true" >> "$GITHUB_OUTPUT"
             exit 0
           elif echo "$CHANGED_FILES" | grep -qP '^(rust-toolchain\.toml|\.cargo/|\.github/|Cargo\.(toml|lock)$)'; then
             echo "Toolchain, cargo config, or root Cargo files changed, will run all tests"
@@ -98,39 +94,6 @@ jobs:
               echo "${output_name}=false" >> "$GITHUB_OUTPUT"
           }
           check_pattern "run_tests" '^(docs/|\.github/|extensions/)' -qvP
-
-          # Determine whether the heavy test suites (which run in the parallel
-          # `tests_slow` job) are reachable by the changed packages. The heavy
-          # suites must run when a full suite runs, or when a heavy crate (or a
-          # heavy crate's dependency) changed so its tests run as dependents.
-          # This keeps leaf-crate changes from re-running ~560 slow `vim` tests
-          # while staying correct for core-crate changes.
-          slow_needed="false"
-          if [ -z "$FILE_CHANGED_PKGS" ]; then
-            # Full suite (root files changed atomically, or a meta change).
-            slow_needed="true"
-          else
-            # Reverse-dependency closure of the heavy crates, plus the heavy
-            # crates themselves.
-            SLOW_SET=$(cargo metadata --format-version=1 2>/dev/null | jq -r '
-              .packages[] | select(
-                any(.dependencies[]?; .name == "vim") or
-                any(.dependencies[]?; .name == "editor") or
-                any(.dependencies[]?; .name == "project_panel") or
-                any(.dependencies[]?; .name == "git_ui") or
-                any(.dependencies[]?; .name == "worktree") or
-                any(.dependencies[]?; .name == "multi_buffer"))
-              | .name' | sort -u)
-            SLOW_SET=$(printf '%s\n%s\n' "$SLOW_SET" "vim editor project_panel git_ui git_ui_core worktree multi_buffer" | sort -u)
-            for dir in $CHANGED_DIRS; do
-              pkg=$(echo "$DIR_TO_PKG" | grep "^${dir}=" | cut -d= -f2 | head -1 || true)
-              if [ -n "$pkg" ] && echo "$SLOW_SET" | grep -qx "$pkg"; then
-                slow_needed="true"
-                break
-              fi
-            done
-          fi
-          echo "slow_needed=$slow_needed" >> "$GITHUB_OUTPUT"
 
   clippy:
     name: Clippy
@@ -212,84 +175,15 @@ jobs:
         run: |
           set -euo pipefail
           filter="${{ needs.orchestrate.outputs.changed_packages }}"
-          # Heavy crates run in the parallel `tests_slow` job to keep this job's
-          # signal fast. The rdg binary's GPUI integration tests require an
-          # interactive app lifecycle; release builds validate it per tag.
-          slow_filter="package(vim) or package(editor) or package(project_panel) or package(git_ui) or package(git_ui_core) or package(worktree) or package(multi_buffer)"
-          exclude_slow_and_rdg="not ($slow_filter) and not package(rdg)"
+          # The rdg binary's GPUI integration tests require an interactive app lifecycle;
+          # release builds validate the binary on each version tag.
+          base_filter="not package(rdg)"
           if [ -n "$filter" ]; then
-            cargo nextest run --workspace --no-fail-fast --failure-output immediate-final -E "$filter and ($exclude_slow_and_rdg)"
+            # Run the changed packages and their dependents, minus the interactive rdg binary.
+            cargo nextest run --workspace --no-fail-fast --failure-output immediate-final -E "$filter and ($base_filter)"
           else
-            cargo nextest run --workspace --no-fail-fast --failure-output immediate-final -E "$exclude_slow_and_rdg"
+            cargo nextest run --workspace --no-fail-fast --failure-output immediate-final -E "$base_filter"
           fi
           # Report sccache stats in the same step (same daemon) so we can see the
           # real cache hit rate for the test build rather than a fresh server.
           sccache --show-stats || true
-
-  tests_slow:
-    name: Slow tests
-    needs: orchestrate
-    if: needs.orchestrate.outputs.run_tests == 'true' && needs.orchestrate.outputs.slow_needed == 'true'
-    runs-on: ubuntu-22.04
-    timeout-minutes: 180
-    env:
-      CC: clang
-      CXX: clang++
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
-        with:
-          clean: false
-
-      - name: Install Linux dependencies
-        run: ./script/linux
-
-      - name: Install WASI SDK
-        run: ./script/download-wasi-sdk
-
-      - name: Install nextest
-        uses: taiki-e/install-action@a6b2e2dcd845ddd7f509ce4f3ed3d922b80cc5d9 # 2.84.0
-        with:
-          tool: nextest
-
-      - name: Limit target directory size
-        shell: bash -euxo pipefail {0}
-        run: script/clear-target-dir-if-larger-than 350 200
-
-      - name: Setup sccache
-        run: ./script/setup-sccache
-        env:
-          SCCACHE_ENDPOINT: ${{ secrets.SCCACHE_ENDPOINT }}
-          SCCACHE_BUCKET: ${{ secrets.SCCACHE_BUCKET }}
-          SCCACHE_REGION: ${{ secrets.SCCACHE_REGION }}
-          SCCACHE_ACCESS_KEY_ID: ${{ secrets.SCCACHE_ACCESS_KEY_ID }}
-          SCCACHE_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_SECRET_ACCESS_KEY }}
-
-      - name: Run slow tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          slow_filter="package(vim) or package(editor) or package(project_panel) or package(git_ui) or package(git_ui_core) or package(worktree) or package(multi_buffer)"
-          cargo nextest run --workspace --no-fail-fast --failure-output immediate-final -E "$slow_filter and (not package(rdg))"
-          sccache --show-stats || true
-
-  tests_pass:
-    name: Tests passed
-    needs: [orchestrate, tests, tests_slow]
-    if: needs.orchestrate.outputs.run_tests == 'true' && always()
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Check test results
-        run: |
-          set +e
-          code=0
-          if [ "${{ needs.tests.result }}" = "failure" ]; then
-            echo "Workspace tests failed" >&2
-            code=1
-          fi
-          # tests_slow is skipped unless a heavy crate changed; a skip is fine.
-          if [ "${{ needs.tests_slow.result }}" = "failure" ]; then
-            echo "Slow tests failed" >&2
-            code=1
-          fi
-          exit $code
