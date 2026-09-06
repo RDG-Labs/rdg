@@ -180,6 +180,7 @@ fn send_args_to_instance(args: &Args) -> anyhow::Result<()> {
                 while let Ok(response) = rx.recv() {
                     match response {
                         CliResponse::Ping => {}
+                        CliResponse::Control(_) => {}
                         CliResponse::Stdout { message } => log::info!("{message}"),
                         CliResponse::Stderr { message } => log::error!("{message}"),
                         CliResponse::Exit { status } => {

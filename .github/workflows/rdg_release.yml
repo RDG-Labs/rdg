@@ -883,4 +883,3 @@ jobs:
             [[ "$RELEASE_CHANNEL" == "preview" ]] && release_options+=(--prerelease)
             gh release create "$tag" --repo "$repo" "${assets[@]}" "${release_options[@]}"
           fi
-          security delete-keychain "$keychain_path"
