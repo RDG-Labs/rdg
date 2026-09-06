@@ -39,7 +39,7 @@ use workspace::{
 
 use crate::persistence::{
     LAYOUT_VERSION, SerializedAxis, SerializedTerminalGroup, SerializedTile, SerializedTileTree,
-    TerminalGroupDb, load_layout,
+    SerializedWorker, TerminalGroupDb, load_layout,
 };
 use crate::tile::{HEADER_HEIGHT, new_tile_pane, tile_terminal};
 
@@ -2452,6 +2452,14 @@ impl SerializableItem for TerminalGroup {
                 .and_then(|pane| pane.upgrade())
                 .and_then(|pane| index_of(&pane)),
             title: self.title.as_ref().map(|title| title.to_string()),
+            overflow_workers: self
+                .overflow_workers
+                .values()
+                .map(|worker| SerializedWorker {
+                    command: worker.metadata.command.clone(),
+                    parent_id: worker.metadata.parent_id,
+                })
+                .collect(),
         };
 
         let db = TerminalGroupDb::global(cx);
@@ -2546,6 +2554,18 @@ impl TerminalGroup {
         self.spawn_terminal_into(focused, root.clone(), None, window, cx)
             .detach_and_log_err(cx);
         self._deferred_spawns = Some(self.spawn_remaining_tiles(root, window, cx));
+
+        // Re-create workers that were spilled past the visible cap before the
+        // restart. Live PTYs don't survive a restart (no daemon), so each is
+        // re-spawned by its command into the overflow set, preserving the set.
+        for worker in &layout.overflow_workers {
+            self.spawn_overflow_worker(
+                worker.parent_id,
+                worker.command.clone(),
+                window,
+                cx,
+            );
+        }
         cx.notify();
     }
 
@@ -3983,6 +4003,7 @@ mod tests {
             focused_tile: Some(2),
             magnified_tile: Some(2),
             title: Some("services".into()),
+            overflow_workers: vec![],
         };
 
         // Restore into a second group and compare the shapes.
@@ -4034,6 +4055,7 @@ mod tests {
             focused_tile: Some(0),
             magnified_tile: None,
             title: None,
+            overflow_workers: vec![],
         };
 
         visual.update(|window, cx| {
@@ -4069,6 +4091,55 @@ mod tests {
                 .count()
         });
         assert_eq!(live, 2, "focusing a waiting tile should start its shell");
+    }
+
+    /// Overflow workers spilled before a restart are re-spawned (by command)
+    /// into the overflow set when the group is restored, since live PTYs can't
+    /// survive a restart without a daemon.
+    #[gpui::test]
+    async fn test_restore_recreates_overflow_workers(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        init_test(cx);
+
+        let (window, group) = init_group(cx).await;
+        let mut visual = VisualTestContext::from_window(window.into(), cx);
+        visual.simulate_resize(gpui::size(gpui::px(3200.), gpui::px(1200.)));
+        visual.run_until_parked();
+
+        // A layout with one overflowed worker to re-spawn.
+        let layout = SerializedTerminalGroup {
+            version: LAYOUT_VERSION,
+            root: SerializedTileTree::Tile(SerializedTile::default()),
+            focused_tile: Some(0),
+            magnified_tile: None,
+            title: None,
+            overflow_workers: vec![crate::persistence::SerializedWorker {
+                command: "echo restored".to_string(),
+                parent_id: None,
+            }],
+        };
+
+        visual.update(|window, cx| {
+            group.update(cx, |group, cx| {
+                group.restore_layout(&layout, window, cx);
+            });
+        });
+        visual.run_until_parked();
+
+        group.read_with(&mut visual, |group, _| {
+            assert_eq!(
+                group.overflow_workers.len(),
+                1,
+                "restore should re-create the overflow worker"
+            );
+            assert!(
+                group
+                    .overflow_workers
+                    .values()
+                    .any(|worker| worker.metadata.command == "echo restored"),
+                "the re-spawned worker should run the saved command"
+            );
+        });
     }
 
     /// Helper: a rendered group with `count` tiles in a single row.
