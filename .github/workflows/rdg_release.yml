@@ -190,6 +190,15 @@ jobs:
         with:
           cache-targets: true
 
+      - name: Setup sccache
+        run: ./script/setup-sccache
+        env:
+          SCCACHE_ENDPOINT: ${{ secrets.SCCACHE_ENDPOINT }}
+          SCCACHE_BUCKET: ${{ secrets.SCCACHE_BUCKET }}
+          SCCACHE_REGION: ${{ secrets.SCCACHE_REGION }}
+          SCCACHE_ACCESS_KEY_ID: ${{ secrets.SCCACHE_ACCESS_KEY_ID }}
+          SCCACHE_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_SECRET_ACCESS_KEY }}
+
       - name: Install Linux dependencies
         run: ./script/linux
 
@@ -248,6 +257,15 @@ jobs:
         uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
         with:
           cache-targets: true
+
+      - name: Setup sccache
+        run: ./script/setup-sccache
+        env:
+          SCCACHE_ENDPOINT: ${{ secrets.SCCACHE_ENDPOINT }}
+          SCCACHE_BUCKET: ${{ secrets.SCCACHE_BUCKET }}
+          SCCACHE_REGION: ${{ secrets.SCCACHE_REGION }}
+          SCCACHE_ACCESS_KEY_ID: ${{ secrets.SCCACHE_ACCESS_KEY_ID }}
+          SCCACHE_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_SECRET_ACCESS_KEY }}
 
       - name: Install Linux dependencies
         run: ./script/linux
@@ -403,6 +421,15 @@ jobs:
         with:
           cache-targets: true
 
+      - name: Setup sccache
+        run: ./script/setup-sccache
+        env:
+          SCCACHE_ENDPOINT: ${{ secrets.SCCACHE_ENDPOINT }}
+          SCCACHE_BUCKET: ${{ secrets.SCCACHE_BUCKET }}
+          SCCACHE_REGION: ${{ secrets.SCCACHE_REGION }}
+          SCCACHE_ACCESS_KEY_ID: ${{ secrets.SCCACHE_ACCESS_KEY_ID }}
+          SCCACHE_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_SECRET_ACCESS_KEY }}
+
       - name: Configure LLVM linker
         if: matrix.target == 'aarch64-apple-darwin'
         shell: bash
@@ -508,6 +535,16 @@ jobs:
         uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
         with:
           cache-targets: true
+
+      - name: Setup sccache
+        shell: pwsh
+        run: ./script/setup-sccache.ps1
+        env:
+          SCCACHE_ENDPOINT: ${{ secrets.SCCACHE_ENDPOINT }}
+          SCCACHE_BUCKET: ${{ secrets.SCCACHE_BUCKET }}
+          SCCACHE_REGION: ${{ secrets.SCCACHE_REGION }}
+          SCCACHE_ACCESS_KEY_ID: ${{ secrets.SCCACHE_ACCESS_KEY_ID }}
+          SCCACHE_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_SECRET_ACCESS_KEY }}
 
       - name: Build Rdg and update helper
         run: cargo build --release --package rdg --package auto_update_helper
