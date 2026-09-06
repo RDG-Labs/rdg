@@ -118,3 +118,29 @@ jobs:
 
       - name: Build Rdg
         run: cargo build --locked --release --package rdg --target aarch64-unknown-linux-gnu
+
+      - name: Validate architecture
+        run: |
+          set -euo pipefail
+          binary="$CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release/rdg"
+          machine=$(file "$binary" | grep -o 'ARM aarch64')
+          test -n "$machine"
+          echo "Architecture OK: $machine"
+          readelf -h "$binary"
+
+      - name: Smoke test under emulation
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y qemu-user-static
+          binary="$CARGO_TARGET_DIR/aarch64-unknown-linux-gnu/release/rdg"
+          command -v qemu-aarch64-static
+          qemu-aarch64-static "$binary" --help >/dev/null 2>&1
+          echo "Runs under ARM64 emulation"
+
+      - name: Upload aarch64 binary
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: rdg-linux-aarch64-zig
+          path: ${{ env.CARGO_TARGET_DIR }}/aarch64-unknown-linux-gnu/release/rdg
+          if-no-files-found: error
+          retention-days: 30
