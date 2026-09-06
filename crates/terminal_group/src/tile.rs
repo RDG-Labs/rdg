@@ -125,12 +125,24 @@ fn render_tile_header(
         .as_ref()
         .is_some_and(|terminal_view| tile_is_running(terminal_view, cx));
     let pane_entity = cx.entity();
-    let worker_status = group
-        .read_with(cx, |group, _| group.worker_status(pane_entity.entity_id().as_u64()))
-        .unwrap_or(None);
     let worker_id = group
         .read_with(cx, |group, _| group.worker_id_for_pane(pane_entity.entity_id()))
         .unwrap_or(None);
+    // Status resolves through the stable worker id so promoted workers (whose
+    // id differs from the pane id) show the right status dot too.
+    let worker_status = worker_id
+        .and_then(|worker_id| {
+            group
+                .read_with(cx, |group, _| group.worker_status(worker_id))
+                .unwrap_or(None)
+        })
+        .or_else(|| {
+            group
+                .read_with(cx, |group, _| {
+                    group.worker_status(pane_entity.entity_id().as_u64())
+                })
+                .unwrap_or(None)
+        });
     let status_color = match worker_status.as_deref() {
         Some("completed") => cx.theme().status().success,
         Some("failed") => cx.theme().status().error,
