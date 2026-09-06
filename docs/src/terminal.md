@@ -359,6 +359,118 @@ For advanced keybinding customization, you can send raw text or keystrokes to th
 }
 ```
 
+## Running Coding Agents and CLI Workers
+
+A terminal group is also the place to run coding agents and long-lived CLI
+workers side by side with your editor. Launch an installed coding agent, or
+spawn any command as a supervised worker, and control it from the same window
+it runs in.
+
+### Spawning a worker
+
+- **Launch an installed coding agent** from a tile header `+` menu, or add it
+  from the command palette.
+- **Spawn a custom command** with `+ → Custom Command…` in a tile header.
+- **Programmatically** via the orchestration CLI (below).
+
+Each worker runs as a normal, visible terminal — never hidden, never filtered.
+
+### Worker overflow
+
+The visible grid has a limit (`max_tiles`, default 32) so tiles stay large
+enough to read. When you spawn more workers than the grid can visibly fit, the
+extra ones are **spilled to overflow**: they keep running as real terminals but
+take no tile, and are listed in a bar under the grid and in **Mission Control**
+(the list-tree icon).
+
+This means you can coordinate far more agents than you could ever see at once —
+the grid stays readable and the agents keep working.
+
+### Mission Control
+
+Open Mission Control to see every worker as a tree (parent/child), each with a
+status marker and menu: **Focus** (surfaces an off-grid worker into a tile),
+**Restart**, **Pause/Resume**, **Send to Overflow**, and **Close**.
+
+| Marker | Status |
+| --------- | ------------------ |
+| `●`       | starting / working |
+| `○`       | waiting            |
+| `✓`       | completed          |
+| `✕`       | failed             |
+
+### Promote and demote
+
+- **Promote** an off-grid worker onto the grid (Mission Control → Focus, or the
+  arrow on its overflow row). Its tile appears without restarting the process —
+  the same PTY keeps running.
+- **Demote** a visible worker back to overflow (its header arrow, or Mission
+  Control → Send to Overflow) to free a tile. The process keeps running.
+
+Both moves preserve the live process and the worker's identity, so its status
+and reporting keep working.
+
+### Pause and resume
+
+Pause a worker (its process receives `SIGSTOP`) from the tile header, the
+overflow row, or Mission Control; resume it (`SIGCONT`) the same way. Useful
+for a busy agent you want to hold while you act on its output.
+
+### Surviving a restart
+
+Workers spilled to overflow are **remembered**: on restart the grid is
+restored and the spill set is re-created by its commands. Live processes
+themselves don't survive a restart (Rdg hosts no background daemon), so a
+worker picked up mid-run is re-started, not resumed.
+
+### Orchestration CLI
+
+Every worker inherits `RDG_GROUP_ID`, `RDG_WORKER_ID`, and (for children)
+`RDG_PARENT_WORKER_ID`, plus the `rdg` control wrapper, so you can orchestrate
+recursively from any worker's shell:
+
+```bash
+# Spawn a worker (capture its id)
+worker_json="$(rdg --control spawn "pi")"
+worker_id="$(printf '%s' "$worker_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["Spawned"]["worker_id"])')"
+
+# Send it a task
+rdg --control send "$worker_id" "Summarize the auth flow; report only"
+
+# Inspect the tree
+rdg --control list
+
+# Broadcast a read-only instruction to all workers
+rdg --control broadcast all "Pause and report your state"
+
+# Report status from inside a worker
+rdg --control report "$RDG_WORKER_ID" working "Inspecting the auth code"
+
+# Watch lifecycle events
+rdg --control watch
+```
+
+The full protocol (`spawn`, `send`, `broadcast`, `list`, `watch`, `report`,
+`close`) is described by the RDG orchestration skill; install it with
+`npx skills add RDG-Labs/rdg --skill rdg-orchestration` or the Terminal Group
+`+ → Install RDG Orchestration Skill…` entry.
+
+## A typical session
+
+1. **Open a repository** and create a terminal group (`Ctrl+\``).
+2. **Start services** that take a tile each: API server, frontend dev server,
+   a watcher, a log tail.
+3. **Launch agents** from a tile's `+` menu until the grid is full; any beyond
+   it spill to overflow and stay supervised in Mission Control.
+4. **Split and rearrange** tiles by dragging headers; magnify a tile you need
+   to read closely.
+5. **Send follow-up tasks** to an agent with `rdg --control send`.
+6. **Act on failures** — a failed worker shows `✕`; use Mission Control to
+   restart it or close it.
+7. **Pause** a noisy agent while you work, then resume it.
+8. **Restart Rdg** — the grid and the overflow set come back; start focused
+   services where you left them.
+
 ## All Terminal Settings
 
 For the complete list of terminal settings, see the [Terminal section in All Settings](./reference/all-settings.md#terminal).
