@@ -12,7 +12,7 @@ use workspace::{Toast, Workspace};
 actions!(
     cli,
     [
-        /// Installs the Zed CLI tool to the system PATH.
+        /// Installs the Rdg CLI tool to the system PATH.
         InstallCliBinary,
     ]
 );
@@ -25,7 +25,7 @@ const CANT_INSTALL_DOCS_URL: &str = "https://github.com/RDG-Labs/rdg/blob/main/d
 /// commonly because the user is not an admin.
 async fn install_script(cx: &AsyncApp) -> Result<Option<PathBuf>> {
     let cli_path = cx.update(|cx| cx.path_for_auxiliary_executable("cli"))?;
-    let link_path = Path::new("/usr/local/bin/zed");
+    let link_path = Path::new("/usr/local/bin/rdg");
     let bin_dir_path = link_path.parent().unwrap();
 
     // Don't re-create symlink if it points to the same CLI binary.
@@ -98,7 +98,7 @@ pub fn install_cli_binary(window: &mut Window, cx: &mut Context<Workspace>) {
             // The user dismissed the administrator prompt; nothing to do.
             Ok(None) => return Ok(()),
             Err(error) => {
-                log::error!("failed to install zed CLI: {error:#}");
+                log::error!("failed to install rdg CLI: {error:#}");
                 workspace.update(cx, |workspace, cx| {
                     struct CliInstallFailed;
 
@@ -108,10 +108,10 @@ pub fn install_cli_binary(window: &mut Window, cx: &mut Context<Workspace>) {
                         |cx| {
                             cx.new(|cx| {
                                 MessageNotification::new(
-                                    "You can add `zed` to your PATH manually.",
+                                    "You can add `rdg` to your PATH manually.",
                                     cx,
                                 )
-                                .with_title("Couldn't install the Zed CLI")
+                                .with_title("Couldn't install the Rdg CLI")
                                 .more_info_message("Show me how")
                                 .more_info_url(CANT_INSTALL_DOCS_URL)
                             })
@@ -129,7 +129,7 @@ pub fn install_cli_binary(window: &mut Window, cx: &mut Context<Workspace>) {
                 Toast::new(
                     NotificationId::unique::<InstalledZedCli>(),
                     format!(
-                        "Installed `zed` to {}. You can launch {} from your terminal.",
+                        "Installed `rdg` to {}. You can launch {} from your terminal.",
                         path.to_string_lossy(),
                         ReleaseChannel::global(cx).display_name()
                     ),
@@ -140,5 +140,5 @@ pub fn install_cli_binary(window: &mut Window, cx: &mut Context<Workspace>) {
         register_zed_scheme(cx).await.log_err();
         Ok(())
     })
-    .detach_and_prompt_err("Cannot install the Zed CLI", window, cx, |_, _, _| None);
+    .detach_and_prompt_err("Cannot install the Rdg CLI", window, cx, |_, _, _| None);
 }
