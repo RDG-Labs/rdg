@@ -572,6 +572,12 @@ pub struct TerminalGroup {
     /// this the tile would get two terminals and immediately split itself.
     spawning: HashSet<gpui::EntityId>,
     worker_metadata: HashMap<u64, WorkerMetadata>,
+    /// Stable worker id → the visible pane the worker currently lives in.
+    /// Populated for every visible worker (id equals the pane id for ordinary
+    /// tiles, and stays the stable overflow id for promoted workers), so the
+    /// control plane resolves a worker without assuming its id equals a pane
+    /// entity id. The id never changes across promotion/demotion.
+    worker_panes: HashMap<u64, Entity<Pane>>,
     /// Real terminals running past the visible-tile cap. Keyed by worker id
     /// for O(1) control ops; each holds a standalone `TerminalView` until it is
     /// promoted to a visible tile or closed.
@@ -645,6 +651,7 @@ impl TerminalGroup {
                 predicted_sizes: HashMap::default(),
                 spawning: HashSet::default(),
                 worker_metadata: HashMap::default(),
+                worker_panes: HashMap::default(),
                 overflow_workers: HashMap::default(),
                 next_overflow_id: OVERFLOW_ID_BASE,
                 auto_start_empty_tiles: false,
@@ -1092,6 +1099,7 @@ impl TerminalGroup {
                     summary: None,
                 },
             );
+            self.worker_panes.insert(worker_id, pane.clone());
             cx.emit(WorkerEvent::Spawned {
                 worker_id,
                 parent_id: None,
@@ -1254,6 +1262,7 @@ impl TerminalGroup {
                     summary: None,
                 },
             );
+            self.worker_panes.insert(worker_id, pane);
             cx.emit(WorkerEvent::Spawned {
                 worker_id,
                 parent_id: None,
@@ -1285,12 +1294,51 @@ impl TerminalGroup {
     }
 
     pub fn control_list(&self, cx: &App) -> Vec<WorkerInfo> {
-        self.center
+        // Visible workers first, keyed by stable worker id (which may differ
+        // from the pane id for promoted workers).
+        let worker_listings = self
+            .worker_panes
+            .iter()
+            .map(|(id, pane)| {
+                let metadata = self.worker_metadata.get(id);
+                let (title, cwd) = tile_terminal(pane.read(cx), cx)
+                    .map(|terminal_view| {
+                        let terminal = terminal_view.read(cx).terminal().read(cx);
+                        (
+                            terminal
+                                .foreground_process_command_name()
+                                .unwrap_or_else(|| terminal.title(true)),
+                            terminal
+                                .working_directory()
+                                .map(|path| path.to_string_lossy().into_owned()),
+                        )
+                    })
+                    .unwrap_or_else(|| ("Terminal".to_string(), None));
+                WorkerInfo {
+                    id: *id,
+                    parent_id: metadata.and_then(|metadata| metadata.parent_id),
+                    title,
+                    cwd,
+                    status: metadata
+                        .map(|metadata| metadata.status.clone())
+                        .unwrap_or_else(|| "unmanaged".to_string()),
+                    summary: metadata.and_then(|metadata| metadata.summary.clone()),
+                }
+            });
+        // Any pane not tracked as a worker (a plain tile) still gets a listing
+        // under its pane id so every visible terminal is supervised.
+        let bare_panes = self
+            .center
             .panes()
             .into_iter()
+            .filter(|pane| {
+                !self
+                    .worker_panes
+                    .values()
+                    .any(|tracked| tracked.entity_id() == pane.entity_id())
+            })
             .map(|pane| {
                 let id = pane.entity_id().as_u64();
-                let metadata = self.worker_metadata.get(&id);
                 let (title, cwd) = tile_terminal(pane.read(cx), cx)
                     .map(|terminal_view| {
                         let terminal = terminal_view.read(cx).terminal().read(cx);
@@ -1306,15 +1354,15 @@ impl TerminalGroup {
                     .unwrap_or_else(|| ("Terminal".to_string(), None));
                 WorkerInfo {
                     id,
-                    parent_id: metadata.and_then(|metadata| metadata.parent_id),
+                    parent_id: None,
                     title,
                     cwd,
-                    status: metadata
-                        .map(|metadata| metadata.status.clone())
-                        .unwrap_or_else(|| "unmanaged".to_string()),
-                    summary: metadata.and_then(|metadata| metadata.summary.clone()),
+                    status: "unmanaged".to_string(),
+                    summary: None,
                 }
-            })
+            });
+        worker_listings
+            .chain(bare_panes)
             .chain(self.overflow_workers.iter().map(|(id, worker)| {
                 let metadata = &worker.metadata;
                 let (title, cwd) = worker
@@ -1392,6 +1440,7 @@ impl TerminalGroup {
                 summary: None,
             },
         );
+        self.worker_panes.insert(id, pane);
         cx.emit(WorkerEvent::Spawned {
             worker_id: id,
             parent_id,
@@ -1509,12 +1558,7 @@ impl TerminalGroup {
             terminal.update(cx, |terminal, _| terminal.input(text.as_bytes().to_vec()));
             return true;
         }
-        let Some(pane) = self
-            .center
-            .panes()
-            .into_iter()
-            .find(|pane| pane.entity_id().as_u64() == worker_id)
-        else {
+        let Some(pane) = self.worker_panes.get(&worker_id) else {
             return false;
         };
         let Some(terminal_view) = tile_terminal(pane.read(cx), cx) else {
@@ -1533,20 +1577,16 @@ impl TerminalGroup {
     ) -> bool {
         if self.overflow_workers.remove(&worker_id).is_some() {
             self.worker_metadata.remove(&worker_id);
+            self.worker_panes.remove(&worker_id);
             cx.emit(WorkerEvent::Closed { worker_id });
             cx.notify();
             return true;
         }
-        let Some(pane) = self
-            .center
-            .panes()
-            .into_iter()
-            .find(|pane| pane.entity_id().as_u64() == worker_id)
-            .cloned()
-        else {
+        let Some(pane) = self.worker_panes.get(&worker_id).cloned() else {
             return false;
         };
         self.worker_metadata.remove(&worker_id);
+        self.worker_panes.remove(&worker_id);
         cx.emit(WorkerEvent::Closed { worker_id });
         self.close_tile(&pane, window, cx);
         cx.notify();
@@ -1594,19 +1634,14 @@ impl TerminalGroup {
 
         // Overflow workers hold no pane; close the real terminal and respawn.
         if self.overflow_workers.remove(&worker_id).is_some() {
+            self.worker_panes.remove(&worker_id);
             cx.emit(WorkerEvent::Closed { worker_id });
             self.control_spawn(parent_id, parent_id, command, window, cx);
             cx.notify();
             return true;
         }
 
-        let Some(pane) = self
-            .center
-            .panes()
-            .into_iter()
-            .find(|pane| pane.entity_id().as_u64() == worker_id)
-            .cloned()
-        else {
+        let Some(pane) = self.worker_panes.get(&worker_id).cloned() else {
             return false;
         };
         let close_task = pane.update(cx, |pane, cx| {
@@ -1737,9 +1772,21 @@ impl TerminalGroup {
 
         self.predicted_sizes.remove(&pane.entity_id());
         self.spawning.remove(&pane.entity_id());
-        let worker_id = pane.entity_id().as_u64();
-        if self.worker_metadata.remove(&worker_id).is_some() {
-            cx.emit(WorkerEvent::Closed { worker_id });
+        // A worker may be keyed under its stable id (not the pane id, for
+        // promoted workers); find it by the pane it currently points at.
+        let worker_id = self
+            .worker_panes
+            .iter()
+            .find(|(_, tracked)| *tracked == pane)
+            .map(|(id, _)| *id);
+        let pane_id = pane.entity_id().as_u64();
+        self.worker_panes.remove(&pane_id);
+        self.worker_metadata.remove(&pane_id);
+        if let Some(worker_id) = worker_id {
+            self.worker_panes.remove(&worker_id);
+            if self.worker_metadata.remove(&worker_id).is_some() {
+                cx.emit(WorkerEvent::Closed { worker_id });
+            }
         }
         match self.center.remove(pane, cx) {
             Ok(_) => {
@@ -1874,13 +1921,7 @@ impl TerminalGroup {
         if self.overflow_workers.contains_key(&worker_id) {
             return self.promote_worker(worker_id, window, cx);
         }
-        let Some(pane) = self
-            .center
-            .panes()
-            .into_iter()
-            .find(|pane| pane.entity_id().as_u64() == worker_id)
-            .cloned()
-        else {
+        let Some(pane) = self.worker_panes.get(&worker_id).cloned() else {
             return false;
         };
         self.set_active_pane(&pane, window, cx);
@@ -1917,7 +1958,6 @@ impl TerminalGroup {
             .read_with(cx, |workspace, _| workspace.database_id())
             .ok()
             .flatten();
-        let pane_id = pane.entity_id();
         pane.update(cx, |pane, cx| {
             let view = cx.new(|cx| {
                 TerminalView::new(
@@ -1932,12 +1972,13 @@ impl TerminalGroup {
             pane.add_item(Box::new(view), true, true, None, window, cx);
         });
 
-        // Re-home the worker under the visible tile's id, preserving status.
-        let new_worker_id = pane_id.as_u64();
-        self.worker_metadata.insert(new_worker_id, metadata);
-        self.worker_metadata.remove(&worker_id);
+        // Re-home the worker's binding: its id is stable (the overflow id) so
+        // the shell's RDG_WORKER_ID and the control plane keep agreeing — only
+        // the visible pane it points at changes. Metadata is preserved as-is.
+        self.worker_panes.insert(worker_id, pane.clone());
+        self.worker_metadata.insert(worker_id, metadata);
         cx.emit(WorkerEvent::Updated {
-            worker_id: new_worker_id,
+            worker_id,
             status: "working".to_string(),
             summary: None,
         });
@@ -3380,6 +3421,38 @@ mod tests {
                 "overflow worker should be drained after promotion"
             );
             assert_eq!(group.tiles().len(), 2, "the grid should grow by one tile");
+            // The worker's id is stable across promotion, so a shell still
+            // reporting with its original RDG_WORKER_ID keeps resolving.
+            assert!(
+                group.worker_panes.contains_key(&worker_id),
+                "worker id must be preserved through promotion"
+            );
+        });
+        // The worker's own `rdg --control report` (the self-report path) must
+        // still find it by the same id after promotion.
+        let reported = window
+            .update(cx, |_, _window, cx| {
+                group.update(cx, |group, cx| {
+                    group.control_report(
+                        worker_id,
+                        "working".to_string(),
+                        Some("still alive after promote".to_string()),
+                        cx,
+                    )
+                })
+            })
+            .expect("failed to report");
+        assert!(reported, "worker self-report must resolve after promotion");
+        group.read_with(cx, |group, _| {
+            assert_eq!(
+                group
+                    .worker_metadata
+                    .get(&worker_id)
+                    .and_then(|metadata| metadata.summary.clone())
+                    .as_deref(),
+                Some("still alive after promote"),
+                "the report should land on the promoted worker's metadata"
+            );
         });
     }
 
