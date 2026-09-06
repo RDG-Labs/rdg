@@ -737,7 +737,7 @@ jobs:
           fi
 
   publish_macos:
-    name: Sign and publish macOS artifacts
+    name: Publish macOS artifacts
     needs:
       - validate_tag
       - prepare_release
@@ -774,45 +774,47 @@ jobs:
           pattern: rdg-macos-*
           path: artifacts
 
-      - name: Sign, notarize, and publish release
+      - name: Build DMG and publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          required_secrets=(MACOS_CERTIFICATE MACOS_CERTIFICATE_PASSWORD MACOS_SIGNING_IDENTITY APPLE_NOTARIZATION_KEY APPLE_NOTARIZATION_KEY_ID APPLE_NOTARIZATION_ISSUER_ID)
-          for secret_name in "${required_secrets[@]}"; do
-            if [[ -z "${!secret_name:-}" ]]; then
-              echo "Missing required environment secret: $secret_name" >&2
-              exit 1
-            fi
-          done
+          sign=false
+          if [[ -n "${MACOS_CERTIFICATE:-}" && -n "${MACOS_CERTIFICATE_PASSWORD:-}" && -n "${MACOS_SIGNING_IDENTITY:-}" ]]; then
+            sign=true
+          else
+            echo "No signing certificate configured; packaging an unsigned DMG." >&2
+          fi
 
           mkdir -p release-assets macos-apps
-          keychain_path="$RUNNER_TEMP/rdg-signing.keychain-db"
-          certificate_path="$RUNNER_TEMP/rdg-certificate.p12"
-          notary_key_path="$RUNNER_TEMP/rdg-notary-key.p8"
-          security create-keychain -p "$MACOS_CERTIFICATE_PASSWORD" "$keychain_path"
-          security default-keychain -s "$keychain_path"
-          security list-keychains -d user -s "$keychain_path"
-          security set-keychain-settings -lut 21600 "$keychain_path"
-          security unlock-keychain -p "$MACOS_CERTIFICATE_PASSWORD" "$keychain_path"
-          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$certificate_path"
-          security import "$certificate_path" -k "$keychain_path" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_CERTIFICATE_PASSWORD" "$keychain_path"
-
           dmg_paths=()
           for arch in x86_64 aarch64; do
             app_root="macos-apps/$arch"
             mkdir -p "$app_root"
             tar -xzf "artifacts/rdg-macos-$arch/rdg-macos-$arch-app.tar.gz" -C "$app_root"
             app_dir="$app_root/Rdg.app"
-            codesign --force --timestamp --options runtime --keychain "$keychain_path" \
-              --entitlements crates/rdg/resources/zed.entitlements \
-              --sign "$MACOS_SIGNING_IDENTITY" "$app_dir/Contents/MacOS/Rdg"
-            codesign --force --timestamp --options runtime --keychain "$keychain_path" \
-              --entitlements crates/rdg/resources/zed.entitlements \
-              --sign "$MACOS_SIGNING_IDENTITY" "$app_dir"
-            codesign --verify --deep --strict --verbose=2 "$app_dir"
+
+            if [[ "$sign" == "true" ]]; then
+              keychain_path="$RUNNER_TEMP/rdg-signing.keychain-db"
+              certificate_path="$RUNNER_TEMP/rdg-certificate.p12"
+              security create-keychain -p "$MACOS_CERTIFICATE_PASSWORD" "$keychain_path"
+              security default-keychain -s "$keychain_path"
+              security list-keychains -d user -s "$keychain_path"
+              security set-keychain-settings -lut 21600 "$keychain_path"
+              security unlock-keychain -p "$MACOS_CERTIFICATE_PASSWORD" "$keychain_path"
+              printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$certificate_path"
+              security import "$certificate_path" -k "$keychain_path" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+              security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$MACOS_CERTIFICATE_PASSWORD" "$keychain_path"
+
+              codesign --force --timestamp --options runtime --keychain "$keychain_path" \
+                --entitlements crates/rdg/resources/zed.entitlements \
+                --sign "$MACOS_SIGNING_IDENTITY" "$app_dir/Contents/MacOS/Rdg"
+              codesign --force --timestamp --options runtime --keychain "$keychain_path" \
+                --entitlements crates/rdg/resources/zed.entitlements \
+                --sign "$MACOS_SIGNING_IDENTITY" "$app_dir"
+              codesign --verify --deep --strict --verbose=2 "$app_dir"
+            fi
+
             dmg_dir="$RUNNER_TEMP/Rdg-dmg-$arch"
             dmg_path="release-assets/rdg-macos-$arch.dmg"
             mkdir -p "$dmg_dir"
@@ -822,14 +824,21 @@ jobs:
             dmg_paths+=("$dmg_path")
           done
 
-          printf '%s' "$APPLE_NOTARIZATION_KEY" > "$notary_key_path"
-          chmod 600 "$notary_key_path"
-          for dmg_path in "${dmg_paths[@]}"; do
-            xcrun notarytool submit "$dmg_path" --wait --key "$notary_key_path" \
-              --key-id "$APPLE_NOTARIZATION_KEY_ID" --issuer "$APPLE_NOTARIZATION_ISSUER_ID"
-            xcrun stapler staple "$dmg_path"
-            xcrun stapler validate "$dmg_path"
-          done
+          if [[ "$sign" == "true" ]]; then
+            if [[ -z "${APPLE_NOTARIZATION_KEY:-}" || -z "${APPLE_NOTARIZATION_KEY_ID:-}" || -z "${APPLE_NOTARIZATION_ISSUER_ID:-}" ]]; then
+              echo "Signing configured but notarization credentials missing; skipping notarization." >&2
+            else
+              notary_key_path="$RUNNER_TEMP/rdg-notary-key.p8"
+              printf '%s' "$APPLE_NOTARIZATION_KEY" > "$notary_key_path"
+              chmod 600 "$notary_key_path"
+              for dmg_path in "${dmg_paths[@]}"; do
+                xcrun notarytool submit "$dmg_path" --wait --key "$notary_key_path" \
+                  --key-id "$APPLE_NOTARIZATION_KEY_ID" --issuer "$APPLE_NOTARIZATION_ISSUER_ID"
+                xcrun stapler staple "$dmg_path"
+                xcrun stapler validate "$dmg_path"
+              done
+            fi
+          fi
 
           (
             cd release-assets
