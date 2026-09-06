@@ -82,18 +82,27 @@ runs are gated behind `ZED_BENCH_HUGE` and remain to be captured.
 **Phase 2 — Worker overflow.** Decouple "how many agents are running" from
 "how many terminal tiles are visible".
 
-- Introduce an explicit `Worker` abstraction (owner of a PTY/log/status)
-  independent of any `Pane`, replacing today's implicit "worker = tile + metadata
-  map".
-- When a spawn would exceed the measured cap, land it in an **overflow tab**: a
-  real, attached PTY shown as a compact row (status dot, title, process name,
-  summary), not a tile. Survives the grid's one-terminal-per-tile rule, stays
-  within the perf budget, and keeps all safety invariants.
-- Promote a row to a visible tile (magnify-style) and demote a visible tile back
-  to overflow. Focused worker → visible; idle workers → overflow.
-- Worker lookup is indexed by `worker_id`, never by walking the tree (O(1), not
-  O(N tiles)).
-- Pause/resume/close a worker from a row without hunting its tile.
+Shipped (Increment A):
+
+- Spawning a worker or agent at the visible-tile cap **no longer refuses**; it
+  spills into an overflow set, each holding a real attached PTY (standalone
+  `TerminalView`, no `Pane`), with a stable worker id (`next_overflow_id`),
+  full metadata, and `WorkerEvent::Spawned/Updated/Closed`.
+- Overflow workers appear in **Mission Control** and a new on-grid **overflow
+  strip** (status + close), and the control plane (`send`/`restart`/`close`)
+  resolves them by id.
+- A dedicated `worker_init_command` shared with visible workers keeps the RDG
+  control protocol consistent (`RDG_GROUP_ID`/`RDG_WORKER_ID`/…).
+- Test: `test_worker_spawn_overflows_past_the_visible_cap`.
+
+Next (Increment B):
+
+- Promote an overflow worker to a visible tile **preserving the live process**
+  (swap its terminal into a tile), and demote a visible tile back to overflow.
+  Currently overflow focus is a no-op and restart re-spawns the worker.
+- Worker lookup stays O(1) by `worker_id` (already keyed by hash map, never a
+  tree walk).
+- Pause/resume a worker from a row without hunting its tile.
 - Restore the overflow set on restart within the same layout guarantees.
 
   The `Worker` object is the seam where Phase 4's headless/background workers

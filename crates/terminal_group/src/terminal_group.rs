@@ -45,6 +45,11 @@ use crate::tile::{HEADER_HEIGHT, new_tile_pane, tile_terminal};
 pub(crate) const ORCHESTRATION_SKILL_INSTALL_COMMAND: &str =
     "npx skills add RDG-Labs/rdg --skill rdg-orchestration";
 
+/// First id used for overflow workers. Pane entity ids are small, counting up
+/// from one per app, so this high floor makes id collisions effectively
+/// impossible in practice.
+const OVERFLOW_ID_BASE: u64 = 1 << 52;
+
 actions!(
     terminal_group,
     [
@@ -439,6 +444,44 @@ fn control_cli_wrapper() -> Option<(String, String)> {
     None
 }
 
+/// Builds the shell prefix that wires a worker into the RDG control plane:
+/// sets `RDG_GROUP_ID`, `RDG_WORKER_ID`, `RDG_PARENT_WORKER_ID`, and the `rdg`
+/// control wrapper, then runs `command`. Shared by visible-tile workers (pane
+/// id) and overflow workers (standalone id) so both speak the same protocol.
+fn worker_init_command_for(
+    group_id: u64,
+    worker_id: u64,
+    command: String,
+    parent_id: Option<u64>,
+) -> String {
+    #[cfg(windows)]
+    let prefix = format!(
+        "set RDG_GROUP_ID={group_id} && set RDG_WORKER_ID={worker_id}{} && ",
+        parent_id.map_or(String::new(), |id| format!(" && set RDG_PARENT_WORKER_ID={id}")),
+    );
+    #[cfg(not(windows))]
+    let prefix = {
+        let (control_directory, control_command) = control_cli_wrapper().unwrap_or_default();
+        let path_prefix = if control_directory.is_empty() {
+            String::new()
+        } else {
+            format!("export PATH={}:$PATH; ", shell_quote(&control_directory))
+        };
+        format!(
+            "{path_prefix}export RDG_GROUP_ID={group_id} RDG_WORKER_ID={worker_id}{} RDG_CONTROL_COMMAND={}; rdg() {{ \"$RDG_CONTROL_COMMAND\" \"$@\"; }}; if [ -n \"$BASH_VERSION\" ]; then export -f rdg; fi; ",
+            parent_id.map_or(String::new(), |id| format!(" RDG_PARENT_WORKER_ID={id}")),
+            shell_quote(
+                if control_command.is_empty() {
+                    "rdg"
+                } else {
+                    &control_command
+                }
+            ),
+        )
+    };
+    format!("{prefix}{command}")
+}
+
 fn parent_axis<'a>(member: &'a Member, pane: &Entity<Pane>) -> Option<&'a PaneAxis> {
     let Member::Axis(axis) = member else {
         return None;
@@ -495,6 +538,14 @@ struct WorkerMetadata {
     summary: Option<String>,
 }
 
+/// A worker whose terminal runs without a visible tile, because the grid is at
+/// its visible-tile cap. Holds the real terminal/PTY and its status so it
+/// stays supervised and recoverable in Mission Control until promoted.
+struct OverflowWorker {
+    terminal_view: gpui::Entity<TerminalView>,
+    metadata: WorkerMetadata,
+}
+
 /// Sibling proportions captured before a split, so they can be restored after.
 struct AxisSnapshot {
     flexes: Vec<f32>,
@@ -521,6 +572,13 @@ pub struct TerminalGroup {
     /// this the tile would get two terminals and immediately split itself.
     spawning: HashSet<gpui::EntityId>,
     worker_metadata: HashMap<u64, WorkerMetadata>,
+    /// Real terminals running past the visible-tile cap. Keyed by worker id
+    /// for O(1) control ops; each holds a standalone `TerminalView` until it is
+    /// promoted to a visible tile or closed.
+    overflow_workers: HashMap<u64, OverflowWorker>,
+    /// Monotonic id source for overflow workers (visible workers keep their
+    /// pane entity id). Offset far from typical entity ids to avoid collisions.
+    next_overflow_id: u64,
     auto_start_empty_tiles: bool,
     /// Where an in-flight tile drag would land. Recomputed as the pointer moves
     /// and cleared when the drag ends, however it ends.
@@ -587,6 +645,8 @@ impl TerminalGroup {
                 predicted_sizes: HashMap::default(),
                 spawning: HashSet::default(),
                 worker_metadata: HashMap::default(),
+                overflow_workers: HashMap::default(),
+                next_overflow_id: OVERFLOW_ID_BASE,
                 auto_start_empty_tiles: false,
                 drop_target: None,
                 detached: false,
@@ -1169,6 +1229,12 @@ impl TerminalGroup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // At the visible-tile cap, spill the agent to overflow rather than
+        // silently refusing the launch.
+        if self.at_visible_cap(cx) {
+            self.spawn_overflow_worker(None, command, window, cx);
+            return;
+        }
         let worker_command = command.clone();
         if let Some(pane) = self.split_pane_with_command(
             pane,
@@ -1203,31 +1269,19 @@ impl TerminalGroup {
     ) -> String {
         let group_id = self.weak_self.entity_id().as_u64();
         let worker_id = pane.entity_id().as_u64();
-        #[cfg(windows)]
-        let prefix = format!(
-            "set RDG_GROUP_ID={group_id} && set RDG_WORKER_ID={worker_id}{} && ",
-            parent_id.map_or(String::new(), |id| format!(" && set RDG_PARENT_WORKER_ID={id}")),
-        );
-        #[cfg(not(windows))]
-        let prefix = {
-            let (control_directory, control_command) =
-                control_cli_wrapper().unwrap_or_default();
-            let path_prefix = if control_directory.is_empty() {
-                String::new()
-            } else {
-                format!("export PATH={}:$PATH; ", shell_quote(&control_directory))
-            };
-            format!(
-                "{path_prefix}export RDG_GROUP_ID={group_id} RDG_WORKER_ID={worker_id}{} RDG_CONTROL_COMMAND={}; rdg() {{ \"$RDG_CONTROL_COMMAND\" \"$@\"; }}; if [ -n \"$BASH_VERSION\" ]; then export -f rdg; fi; ",
-                parent_id.map_or(String::new(), |id| format!(" RDG_PARENT_WORKER_ID={id}")),
-                shell_quote(if control_command.is_empty() {
-                    "rdg"
-                } else {
-                    &control_command
-                }),
-            )
-        };
-        format!("{prefix}{command}")
+        worker_init_command_for(group_id, worker_id, command, parent_id)
+    }
+
+    /// Same as [`Self::worker_init_command`] but for a worker id that is not a
+    /// pane entity id (an overflow worker).
+    fn worker_init_command_standalone(
+        &self,
+        worker_id: u64,
+        command: String,
+        parent_id: Option<u64>,
+    ) -> String {
+        let group_id = self.weak_self.entity_id().as_u64();
+        worker_init_command_for(group_id, worker_id, command, parent_id)
     }
 
     pub fn control_list(&self, cx: &App) -> Vec<WorkerInfo> {
@@ -1261,6 +1315,36 @@ impl TerminalGroup {
                     summary: metadata.and_then(|metadata| metadata.summary.clone()),
                 }
             })
+            .chain(self.overflow_workers.iter().map(|(id, worker)| {
+                let metadata = &worker.metadata;
+                let (title, cwd) = worker
+                    .terminal_view
+                    .read(cx)
+                    .terminal()
+                    .read(cx)
+                    .foreground_process_command_name()
+                    .map_or_else(
+                        || ("overflow".to_string(), None),
+                        |name| {
+                            let cwd = worker
+                                .terminal_view
+                                .read(cx)
+                                .terminal()
+                                .read(cx)
+                                .working_directory()
+                                .map(|p| p.to_string_lossy().into_owned());
+                            (name, cwd)
+                        },
+                    );
+                WorkerInfo {
+                    id: *id,
+                    parent_id: metadata.parent_id,
+                    title,
+                    cwd,
+                    status: metadata.status.clone(),
+                    summary: metadata.summary.clone(),
+                }
+            }))
             .collect()
     }
 
@@ -1272,6 +1356,14 @@ impl TerminalGroup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Option<u64> {
+        // At the visible-tile cap, spill the worker into an overflow row instead
+        // of refusing it: the grid is bounded for readability, but the number of
+        // concurrently supervised agents should not be. It stays a real attached
+        // PTY, so it can be promoted or closed and keeps all safety invariants.
+        if self.at_visible_cap(cx) {
+            return self.spawn_overflow_worker(parent_id, command, window, cx);
+        }
+
         let worker_command = command.clone();
         let source = source_id
             .and_then(|id| {
@@ -1307,7 +1399,116 @@ impl TerminalGroup {
         Some(id)
     }
 
+    /// True when adding another visible tile would be refused by the cap.
+    /// Overflow spill uses this count check; the geometry split-guard only
+    /// applies to explicit splits, where the user asked for a visible tile.
+    fn at_visible_cap(&self, cx: &App) -> bool {
+        let settings = *TerminalWorkspaceSettings::get_global(cx);
+        self.center.panes().len() >= settings.max_tiles
+    }
+
+    /// Runs a worker as a real attached PTY with no visible tile, because the
+    /// grid is at its visible cap. The terminal stays supervised and
+    /// recoverable from Mission Control until it is promoted or closed.
+    fn spawn_overflow_worker(
+        &mut self,
+        parent_id: Option<u64>,
+        command: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<u64> {
+        let worker_id = self.next_overflow_id;
+        self.next_overflow_id += 1;
+
+        let project = self.project.downgrade();
+        let workspace = self.workspace.clone();
+        let init_command = self.worker_init_command_standalone(worker_id, command.clone(), parent_id);
+
+        cx.spawn_in(window, async move |this, cx| {
+            let result: anyhow::Result<()> = async {
+                let terminal = project
+                    .update(cx, |project, cx| project.create_terminal_shell(None, cx))?
+                    .await?;
+                terminal
+                    .update(cx, |terminal, cx| {
+                        terminal.write_init_command_after_startup(
+                            format!("{init_command}\r").into_bytes(),
+                            cx,
+                        );
+                    });
+
+                // Read the workspace only once the synchronous update that
+                // started this task has finished (action handlers hold it).
+                let workspace_id = workspace
+                    .read_with(cx, |workspace, _| workspace.database_id())
+                    .ok()
+                    .flatten();
+
+                let workspace_for_view = workspace.clone();
+                let project_for_view = project.clone();
+                let terminal_view = cx.new_window_entity(|window, cx| {
+                    TerminalView::new(
+                        terminal.clone(),
+                        workspace_for_view,
+                        workspace_id,
+                        project_for_view,
+                        window,
+                        cx,
+                    )
+                })?;
+
+                this.update(cx, |this, cx| {
+                    let metadata = this.worker_metadata.entry(worker_id).or_insert_with(|| {
+                        WorkerMetadata {
+                            parent_id,
+                            command: command.clone(),
+                            status: "starting".to_string(),
+                            summary: None,
+                        }
+                    });
+                    this.overflow_workers.insert(
+                        worker_id,
+                        OverflowWorker {
+                            terminal_view,
+                            metadata: metadata.clone(),
+                        },
+                    );
+                    cx.emit(WorkerEvent::Spawned {
+                        worker_id,
+                        parent_id,
+                    });
+                    cx.notify();
+                })?;
+                Ok(())
+            }
+            .await;
+            if let Err(error) = result {
+                log::error!("overflow worker {worker_id} failed to start: {error:#}");
+                this.update(cx, |this, cx| {
+                    if let Some(metadata) = this.worker_metadata.get_mut(&worker_id) {
+                        metadata.status = "failed".to_string();
+                    }
+                    cx.emit(WorkerEvent::Updated {
+                        worker_id,
+                        status: "failed".to_string(),
+                        summary: None,
+                    });
+                })
+                .ok();
+            }
+        })
+        .detach();
+
+        Some(worker_id)
+    }
+
     pub fn control_send(&self, worker_id: u64, text: &str, cx: &mut App) -> bool {
+        // Overflow workers have no pane; resolve the terminal directly.
+        if let Some(worker) = self.overflow_workers.get(&worker_id) {
+            let terminal = worker.terminal_view.read(cx).terminal().clone();
+            terminal.update(cx, |terminal, _| terminal.input(text.as_bytes().to_vec()));
+            return true;
+        }
         let Some(pane) = self
             .center
             .panes()
@@ -1330,6 +1531,12 @@ impl TerminalGroup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if self.overflow_workers.remove(&worker_id).is_some() {
+            self.worker_metadata.remove(&worker_id);
+            cx.emit(WorkerEvent::Closed { worker_id });
+            cx.notify();
+            return true;
+        }
         let Some(pane) = self
             .center
             .panes()
@@ -1382,6 +1589,17 @@ impl TerminalGroup {
         let Some(metadata) = self.worker_metadata.remove(&worker_id) else {
             return false;
         };
+        let parent_id = metadata.parent_id;
+        let command = metadata.command;
+
+        // Overflow workers hold no pane; close the real terminal and respawn.
+        if self.overflow_workers.remove(&worker_id).is_some() {
+            cx.emit(WorkerEvent::Closed { worker_id });
+            self.control_spawn(parent_id, parent_id, command, window, cx);
+            cx.notify();
+            return true;
+        }
+
         let Some(pane) = self
             .center
             .panes()
@@ -1391,8 +1609,6 @@ impl TerminalGroup {
         else {
             return false;
         };
-        let parent_id = metadata.parent_id;
-        let command = metadata.command;
         let close_task = pane.update(cx, |pane, cx| {
             pane.close_all_items(&Default::default(), window, cx)
         });
@@ -1653,6 +1869,12 @@ impl TerminalGroup {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        // Overflow workers aren't on the visible grid yet; focusing them is a
+        // promotion that preserves the live process. That swap is a follow-up;
+        // for now close a tile or let the strip show it's running off-grid.
+        if self.overflow_workers.contains_key(&worker_id) {
+            return false;
+        }
         let Some(pane) = self
             .center
             .panes()
@@ -2485,6 +2707,7 @@ impl Render for TerminalGroup {
                     .p(px(TerminalWorkspaceSettings::get_global(cx).gap / 2.))
                     .child(grid),
             )
+            .children(self.render_overflow_strip(window, cx))
             .child(
                 div()
                     .absolute()
@@ -2526,6 +2749,68 @@ impl Render for TerminalGroup {
                     cx,
                 )
             }))
+    }
+}
+
+impl TerminalGroup {
+    /// A bar under the grid listing workers running beyond the visible-tile
+    /// cap. Each row shows status and a close action; full supervision lives in
+    /// Mission Control. Kept as stateless labels so many overflow workers cost
+    /// no per-frame terminal repaint.
+    fn render_overflow_strip(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
+        if self.overflow_workers.is_empty() {
+            return None;
+        }
+        let rows = self
+            .overflow_workers
+            .iter()
+            .map(|(id, worker)| {
+                let metadata = &worker.metadata;
+                let marker = match metadata.status.as_str() {
+                    "completed" => "✓",
+                    "failed" => "✕",
+                    "waiting" => "○",
+                    _ => "●",
+                };
+                let worker_id = *id;
+                let title = SharedString::from(format!("{} {}", marker, metadata.command));
+                div().flex().flex_row().items_center().gap_2().child(
+                    Label::new(title).size(LabelSize::Small),
+                )
+                .child(
+                    IconButton::new("overflow-close", IconName::Close)
+                        .shape(IconButtonShape::Square)
+                        .icon_size(IconSize::XSmall)
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.control_close(worker_id, window, cx);
+                        })),
+                )
+            })
+            .collect::<Vec<_>>();
+        Some(
+            div()
+                .absolute()
+                .bottom_0()
+                .left_0()
+                .right_0()
+                .w_full()
+                .px_2()
+                .py_1()
+                .gap_2()
+                .flex()
+                .flex_col()
+                .bg(cx.theme().colors().tab_bar_background)
+                .border_t_1()
+                .border_color(cx.theme().colors().border)
+                .child(
+                    Label::new(format!("{} agent(s) running off-grid", rows.len())).size(LabelSize::Small),
+                )
+                .children(rows),
+        )
     }
 }
 
@@ -2937,6 +3222,47 @@ mod tests {
             assert!(
                 tiles <= TerminalWorkspaceSettings::get_global(cx).max_tiles,
                 "the cap must hold, got {tiles}"
+            );
+        });
+    }
+
+    /// A worker spawned at the visible-tile cap is not refused: it runs as a
+    /// real terminal in the overflow set and is reachable by the control plane.
+    #[gpui::test]
+    async fn test_worker_spawn_overflows_past_the_visible_cap(cx: &mut TestAppContext) {
+        cx.executor().allow_parking();
+        init_test(cx);
+
+        cx.update_global(|store: &mut SettingsStore, cx| {
+            store
+                .set_user_settings(r#"{"terminal_workspace": {"max_tiles": 1}}"#, cx)
+                .unwrap();
+        });
+
+        let (window, group) = init_group(cx).await;
+        cx.run_until_parked();
+
+        // The grid is at max_tiles=1, so a worker must spill to overflow.
+        let worker_id = window
+            .update(cx, |_, window, cx| {
+                group.update(cx, |group, cx| {
+                    group.control_spawn(None, None, "echo overflow".to_string(), window, cx)
+                })
+            })
+            .expect("failed to spawn")
+            .expect("worker should spawn");
+        cx.run_until_parked();
+
+        group.read_with(cx, |group, cx| {
+            assert_eq!(group.tiles().len(), 1, "the grid must stay at the cap");
+            assert!(
+                group.overflow_workers.contains_key(&worker_id),
+                "worker {worker_id} should live in the overflow set"
+            );
+            let listed = group.control_list(cx);
+            assert!(
+                listed.iter().any(|worker| worker.id == worker_id),
+                "overflow worker should appear in control_list"
             );
         });
     }
