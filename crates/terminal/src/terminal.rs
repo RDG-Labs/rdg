@@ -3041,19 +3041,31 @@ impl Terminal {
     }
 
     /// Pauses the foreground process group of a PTY terminal (SIGSTOP).
+    ///
+    /// No-op on platforms without SIGSTOP (e.g. Windows).
     pub fn pause_process(&mut self) -> bool {
         let TerminalType::Pty { info, .. } = &self.terminal_type else {
             return false;
         };
-        info.signal_current_process(libc::SIGSTOP)
+        #[cfg(unix)]
+        let signal = libc::SIGSTOP;
+        #[cfg(not(unix))]
+        let signal = 0;
+        info.signal_current_process(signal)
     }
 
     /// Resumes a paused PTY terminal's foreground process group (SIGCONT).
+    ///
+    /// No-op on platforms without SIGCONT (e.g. Windows).
     pub fn resume_process(&mut self) -> bool {
         let TerminalType::Pty { info, .. } = &self.terminal_type else {
             return false;
         };
-        info.signal_current_process(libc::SIGCONT)
+        #[cfg(unix)]
+        let signal = libc::SIGCONT;
+        #[cfg(not(unix))]
+        let signal = 0;
+        info.signal_current_process(signal)
     }
 
     /// Returns whether this terminal still owns its live PTY sender.
