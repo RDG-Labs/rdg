@@ -21,11 +21,11 @@ use onboarding::FIRST_OPEN;
 use onboarding::show_onboarding_view;
 use recent_projects::navigate_to_positions;
 use settings::Settings;
-use terminal_group::{TerminalGroup, WorkerEvent};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use terminal_group::{TerminalGroup, WorkerEvent};
 use ui::SharedString;
 use util::ResultExt;
 use util::debug_panic;
@@ -120,37 +120,70 @@ impl OpenRequest {
         this.dev_container = request.dev_container;
         this.open_behavior = request.open_behavior;
         for url in request.urls {
-            if let Some(server_name) = url.strip_prefix("zed-cli://") {
+            if let Some(server_name) = url
+                .strip_prefix("rdg-cli://")
+                .or_else(|| url.strip_prefix("zed-cli://"))
+            {
                 this.kind = Some(OpenRequestKind::CliConnection(connect_to_cli(server_name)?));
-            } else if let Some(action_index) = url.strip_prefix("zed-dock-action://") {
+            } else if let Some(action_index) = url
+                .strip_prefix("rdg-dock-action://")
+                .or_else(|| url.strip_prefix("zed-dock-action://"))
+            {
                 this.kind = Some(OpenRequestKind::DockMenuAction {
                     index: action_index.parse()?,
                 });
             } else if let Some(file) = url.strip_prefix("file://") {
                 this.parse_file_path(file)
-            } else if let Some(file) = url.strip_prefix("zed://file") {
+            } else if let Some(file) = url
+                .strip_prefix("rdg://file")
+                .or_else(|| url.strip_prefix("zed://file"))
+            {
                 this.parse_file_path(file)
-            } else if let Some(extension_id) = url.strip_prefix("zed://extension/") {
+            } else if let Some(extension_id) = url
+                .strip_prefix("rdg://extension/")
+                .or_else(|| url.strip_prefix("zed://extension/"))
+            {
                 this.kind = Some(OpenRequestKind::Extension {
                     extension_id: extension_id.to_string(),
                 });
-            } else if url.starts_with("zed://skill") || url.starts_with("zed://agent") {
+            } else if url.starts_with("rdg://skill")
+                || url.starts_with("rdg://agent")
+                || url.starts_with("zed://skill")
+                || url.starts_with("zed://agent")
+            {
                 log::warn!("AI and agent links are disabled in Rdg");
-            } else if url == "zed://" || url == "zed://open" || url == "zed://open/" {
+            } else if matches!(url, "rdg://" | "rdg://open" | "rdg://open/")
+                || matches!(url, "zed://" | "zed://open" | "zed://open/")
+            {
                 this.kind = Some(OpenRequestKind::FocusApp);
-            } else if let Some(schema_path) = url.strip_prefix("zed://schemas/") {
+            } else if let Some(schema_path) = url
+                .strip_prefix("rdg://schemas/")
+                .or_else(|| url.strip_prefix("zed://schemas/"))
+            {
                 this.kind = Some(OpenRequestKind::BuiltinJsonSchema {
                     schema_path: schema_path.to_string(),
                 });
-            } else if url == "zed://settings" || url == "zed://settings/" {
+            } else if matches!(
+                url,
+                "rdg://settings" | "rdg://settings/" | "zed://settings" | "zed://settings/"
+            ) {
                 this.kind = Some(OpenRequestKind::Setting { setting_path: None });
-            } else if let Some(setting_path) = url.strip_prefix("zed://settings/") {
+            } else if let Some(setting_path) = url
+                .strip_prefix("rdg://settings/")
+                .or_else(|| url.strip_prefix("zed://settings/"))
+            {
                 this.kind = Some(OpenRequestKind::Setting {
                     setting_path: Some(setting_path.to_string()),
                 });
-            } else if let Some(clone_path) = url.strip_prefix("zed://git/clone") {
+            } else if let Some(clone_path) = url
+                .strip_prefix("rdg://git/clone")
+                .or_else(|| url.strip_prefix("zed://git/clone"))
+            {
                 this.parse_git_clone_url(clone_path)?
-            } else if let Some(commit_path) = url.strip_prefix("zed://git/commit/") {
+            } else if let Some(commit_path) = url
+                .strip_prefix("rdg://git/commit/")
+                .or_else(|| url.strip_prefix("zed://git/commit/"))
+            {
                 this.parse_git_commit_url(commit_path)?
             } else {
                 log::error!("unhandled url: {}", url);
@@ -407,7 +440,11 @@ pub async fn open_paths_with_positions(
 fn find_control_group(
     cx: &mut App,
     group_id: Option<u64>,
-) -> Option<(WindowHandle<MultiWorkspace>, Entity<Workspace>, Entity<TerminalGroup>)> {
+) -> Option<(
+    WindowHandle<MultiWorkspace>,
+    Entity<Workspace>,
+    Entity<TerminalGroup>,
+)> {
     let mut fallback = None;
     for window in cx.windows() {
         let Some(multi_workspace) = window.downcast::<MultiWorkspace>() else {
@@ -471,12 +508,24 @@ fn control_event_response(event: &WorkerEvent) -> ControlResponse {
         WorkerEvent::Spawned {
             worker_id,
             parent_id,
-        } => ("spawned", *worker_id, *parent_id, Some("starting".to_string()), None),
+        } => (
+            "spawned",
+            *worker_id,
+            *parent_id,
+            Some("starting".to_string()),
+            None,
+        ),
         WorkerEvent::Updated {
             worker_id,
             status,
             summary,
-        } => ("updated", *worker_id, None, Some(status.clone()), summary.clone()),
+        } => (
+            "updated",
+            *worker_id,
+            None,
+            Some(status.clone()),
+            summary.clone(),
+        ),
         WorkerEvent::Closed { worker_id } => ("closed", *worker_id, None, None, None),
     };
     ControlResponse::Event(ControlEvent {
@@ -522,7 +571,8 @@ fn handle_control_request(request: ControlRequest, cx: &mut AsyncApp) -> Control
                     ControlRequest::Send {
                         worker_id, text, ..
                     } => {
-                        let sent = group.update(cx, |group, cx| group.control_send(worker_id, &text, cx));
+                        let sent =
+                            group.update(cx, |group, cx| group.control_send(worker_id, &text, cx));
                         if sent {
                             ControlResponse::Acknowledged
                         } else {
@@ -535,12 +585,18 @@ fn handle_control_request(request: ControlRequest, cx: &mut AsyncApp) -> Control
                         worker_ids, text, ..
                     } => {
                         let ids = if worker_ids.is_empty() {
-                            group.read(cx).control_list(cx).into_iter().map(|worker| worker.id).collect()
+                            group
+                                .read(cx)
+                                .control_list(cx)
+                                .into_iter()
+                                .map(|worker| worker.id)
+                                .collect()
                         } else {
                             worker_ids
                         };
                         let sent = group.update(cx, |group, cx| {
-                            ids.iter().all(|worker_id| group.control_send(*worker_id, &text, cx))
+                            ids.iter()
+                                .all(|worker_id| group.control_send(*worker_id, &text, cx))
                         });
                         if sent {
                             ControlResponse::Acknowledged
@@ -551,7 +607,8 @@ fn handle_control_request(request: ControlRequest, cx: &mut AsyncApp) -> Control
                         }
                     }
                     ControlRequest::Close { worker_id, .. } => {
-                        let closed = group.update(cx, |group, cx| group.control_close(worker_id, window, cx));
+                        let closed = group
+                            .update(cx, |group, cx| group.control_close(worker_id, window, cx));
                         if closed {
                             ControlResponse::Acknowledged
                         } else {
@@ -703,7 +760,9 @@ pub async fn handle_cli_connection(
                 let _subscription = cx.update(|cx| {
                     let responses = responses;
                     cx.subscribe(&group, move |_, event: &WorkerEvent, _| {
-                        if let Err(error) = responses.send(CliResponse::Control(control_event_response(event))) {
+                        if let Err(error) =
+                            responses.send(CliResponse::Control(control_event_response(event)))
+                        {
                             log::debug!("worker event stream closed: {error:#}");
                         }
                     })
@@ -1344,7 +1403,14 @@ mod tests {
     fn test_parse_focus_app_url(cx: &mut TestAppContext) {
         let _app_state = init_test(cx);
 
-        for url in ["zed://", "zed://open", "zed://open/"] {
+        for url in [
+            "rdg://",
+            "rdg://open",
+            "rdg://open/",
+            "zed://",
+            "zed://open",
+            "zed://open/",
+        ] {
             let request = cx.update(|cx| {
                 OpenRequest::parse(
                     RawOpenRequest {

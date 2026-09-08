@@ -547,8 +547,12 @@ impl settings::Settings for TelemetrySettings {
     fn from_settings(content: &SettingsContent) -> Self {
         let telemetry = content.telemetry.as_ref();
         Self {
-            diagnostics: telemetry.and_then(|settings| settings.diagnostics).unwrap_or(false),
-            metrics: telemetry.and_then(|settings| settings.metrics).unwrap_or(false),
+            diagnostics: telemetry
+                .and_then(|settings| settings.diagnostics)
+                .unwrap_or(false),
+            metrics: telemetry
+                .and_then(|settings| settings.metrics)
+                .unwrap_or(false),
             anthropic_retention: telemetry
                 .and_then(|settings| settings.anthropic_retention)
                 .unwrap_or(false),
@@ -1940,8 +1944,10 @@ impl ProtoClient for Client {
     }
 }
 
-/// prefix for the zed:// url scheme
+/// Legacy prefix for the zed:// URL scheme.
 pub const ZED_URL_SCHEME: &str = "zed";
+/// Native prefix for the rdg:// URL scheme.
+pub const RDG_URL_SCHEME: &str = "rdg";
 
 /// A parsed Zed link that can be handled internally by the application.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1967,6 +1973,7 @@ pub fn parse_zed_link(link: &str, cx: &App) -> Option<ZedLink> {
         .and_then(|result| result.strip_prefix('/'))
         .or_else(|| {
             link.strip_prefix(ZED_URL_SCHEME)
+                .or_else(|| link.strip_prefix(RDG_URL_SCHEME))
                 .and_then(|result| result.strip_prefix("://"))
         })?;
 
