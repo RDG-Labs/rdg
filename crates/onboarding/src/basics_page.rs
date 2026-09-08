@@ -1,16 +1,13 @@
-use std::sync::Arc;
 use fs::Fs;
 use gpui::{Action, App, ClickEvent, IntoElement, Window};
 use project::project_settings::ProjectSettings;
-use settings::{
-    BaseKeymap, Settings, WindowBackgroundContent, update_settings_file,
-};
+use settings::{BaseKeymap, Settings, WindowBackgroundContent, update_settings_file};
+use std::sync::Arc;
 use theme::{Appearance, SystemAppearance, ThemeRegistry};
 use theme_settings::{ThemeAppearanceMode, ThemeName, ThemeSelection, ThemeSettings};
 use ui::{
-    Divider, StatefulInteractiveElement, SwitchField, TintColor,
-    ToggleButtonGroup, ToggleButtonGroupSize, ToggleButtonSimple, ToggleButtonWithIcon, Tooltip,
-    prelude::*,
+    Divider, StatefulInteractiveElement, SwitchField, TintColor, ToggleButtonGroup,
+    ToggleButtonGroupSize, ToggleButtonSimple, ToggleButtonWithIcon, Tooltip, prelude::*,
 };
 use vim_mode_setting::VimModeSetting;
 
@@ -268,24 +265,33 @@ fn render_window_appearance(tab_index: &mut isize, cx: &mut App) -> impl IntoEle
     v_flex()
         .gap_2()
         .child(
-            h_flex().justify_between().child(Label::new("Window Appearance")).child(
-                ToggleButtonGroup::single_row(
-                    "onboarding-window-appearance",
-                    [
-                        ToggleButtonSimple::new("Solid", set_appearance(WindowBackgroundContent::Opaque)),
-                        ToggleButtonSimple::new("Glass", set_appearance(WindowBackgroundContent::Blurred)),
-                        ToggleButtonSimple::new(
-                            "Native Material",
-                            set_appearance(WindowBackgroundContent::Native),
-                        ),
-                    ],
-                )
-                .selected_index(selected_index)
-                .style(ui::ToggleButtonGroupStyle::Outlined)
-                .size(ToggleButtonGroupSize::Medium)
-                .auto_width()
-                .tab_index(tab_index),
-            ),
+            h_flex()
+                .justify_between()
+                .child(Label::new("Window Appearance"))
+                .child(
+                    ToggleButtonGroup::single_row(
+                        "onboarding-window-appearance",
+                        [
+                            ToggleButtonSimple::new(
+                                "Solid",
+                                set_appearance(WindowBackgroundContent::Opaque),
+                            ),
+                            ToggleButtonSimple::new(
+                                "Glass",
+                                set_appearance(WindowBackgroundContent::Blurred),
+                            ),
+                            ToggleButtonSimple::new(
+                                "Native Material",
+                                set_appearance(WindowBackgroundContent::Native),
+                            ),
+                        ],
+                    )
+                    .selected_index(selected_index)
+                    .style(ui::ToggleButtonGroupStyle::Outlined)
+                    .size(ToggleButtonGroupSize::Medium)
+                    .auto_width()
+                    .tab_index(tab_index),
+                ),
         )
         .child(
             Label::new("Native Material uses the platform backdrop when available.")
@@ -310,7 +316,7 @@ fn render_base_keymap_section(tab_index: &mut isize, cx: &mut App) -> impl IntoE
         ToggleButtonGroup::two_rows(
             "base_keymap_selection",
             [
-                ToggleButtonWithIcon::new("Zed", IconName::AiZed, |_, _, cx| {
+                ToggleButtonWithIcon::new("Rdg", IconName::Keyboard, |_, _, cx| {
                     write_keymap_base(BaseKeymap::Zed, cx);
                 }),
                 ToggleButtonWithIcon::new("VS Code", IconName::EditorVsCode, |_, _, cx| {
@@ -403,12 +409,12 @@ fn render_worktree_auto_trust_switch(tab_index: &mut isize, cx: &mut App) -> imp
         ui::ToggleState::Unselected
     };
 
-    let tooltip_description = "Zed can only allow services like language servers, project settings, and MCP servers to run after you mark a new project as trusted.";
+    let tooltip_description = "Rdg can only allow services like language servers, project settings, and MCP servers to run after you mark a new project as trusted.";
 
     SwitchField::new(
         "onboarding-auto-trust-worktrees",
         Some("Trust All Projects By Default"),
-        Some("Automatically mark all new projects as trusted to unlock all Zed's features".into()),
+        Some("Automatically mark all new projects as trusted to unlock all Rdg's features".into()),
         toggle_state,
         {
             let fs = <dyn Fs>::global(cx);
