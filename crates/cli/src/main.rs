@@ -31,9 +31,35 @@ use walkdir::WalkDir;
 
 use std::io::IsTerminal;
 
-const URL_PREFIX: [&'static str; 5] = ["zed://", "http://", "https://", "file://", "ssh://"];
+const URL_PREFIX: [&'static str; 6] = [
+    "zed://", "rdg://", "http://", "https://", "file://", "ssh://",
+];
+
+fn is_url(argument: &str) -> bool {
+    URL_PREFIX.iter().any(|prefix| argument.starts_with(prefix))
+}
 
 struct Detect;
+
+#[cfg(any(target_os = "linux", target_os = "freebsd", test))]
+fn detect_installed_app(cli: &Path) -> anyhow::Result<PathBuf> {
+    let dir = cli.parent().context("no parent path for cli")?;
+    let possible_locations = [
+        "../libexec/rdg",
+        "../libexec/zed-editor",
+        "../lib/zed/zed-editor",
+        "./zed",
+    ];
+    possible_locations
+        .iter()
+        .find_map(|path| {
+            dir.join(path)
+                .canonicalize()
+                .ok()
+                .filter(|path| path != cli)
+        })
+        .with_context(|| format!("could not find any of: {}", possible_locations.join(", ")))
+}
 
 trait InstalledApp {
     fn zed_version_string(&self) -> String;
@@ -417,6 +443,28 @@ mod tests {
     }
 
     #[test]
+    fn test_rdg_scheme_is_url() {
+        assert!(is_url("rdg://open"));
+        assert!(!is_url("rdg/project"));
+    }
+
+    #[test]
+    fn test_detect_installed_app_in_rdg_nix_layout() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let bin_dir = temp_dir.path().join("bin");
+        let libexec_dir = temp_dir.path().join("libexec");
+        fs::create_dir_all(&bin_dir)?;
+        fs::create_dir_all(&libexec_dir)?;
+        let cli = bin_dir.join("rdg");
+        let app = libexec_dir.join("rdg");
+        fs::write(&cli, [])?;
+        fs::write(&app, [])?;
+
+        assert_eq!(detect_installed_app(&cli)?, app.canonicalize()?);
+        Ok(())
+    }
+
+    #[test]
     fn test_parse_non_existing_path() {
         // Absolute path
         let result = parse_path_with_position(path!("/non/existing/path.txt")).unwrap();
@@ -760,7 +808,7 @@ fn run() -> Result<()> {
         if control_request.is_some() {
             break;
         }
-        if URL_PREFIX.iter().any(|&prefix| path.starts_with(prefix)) {
+        if is_url(path) {
             urls.push(path.to_string());
         } else if path == "-" && args.paths_with_position.len() == 1 {
             let file = NamedTempFile::new()?;
@@ -989,7 +1037,7 @@ mod linux {
     use cli::FORCE_CLI_MODE_ENV_VAR_NAME;
     use fork::Fork;
 
-    use crate::{Detect, InstalledApp};
+    use crate::{Detect, InstalledApp, detect_installed_app};
 
     struct App(PathBuf);
 
@@ -999,18 +1047,7 @@ mod linux {
                 path.to_path_buf().canonicalize()?
             } else {
                 let cli = env::current_exe()?;
-                let dir = cli.parent().context("no parent path for cli")?;
-
-                // libexec is the standard, lib/zed is for Arch (and other non-libexec distros),
-                // ./zed is for the target directory in development builds.
-                let possible_locations =
-                    ["../libexec/zed-editor", "../lib/zed/zed-editor", "./zed"];
-                possible_locations
-                    .iter()
-                    .find_map(|p| dir.join(p).canonicalize().ok().filter(|path| path != &cli))
-                    .with_context(|| {
-                        format!("could not find any of: {}", possible_locations.join(", "))
-                    })?
+                detect_installed_app(&cli)?
             };
 
             Ok(App(path))
@@ -1415,6 +1452,28 @@ mod mac_os {
     struct InfoPlist {
         #[serde(rename = "CFBundleShortVersionString")]
         bundle_short_version_string: String,
+        #[serde(rename = "CFBundleExecutable")]
+        bundle_executable: String,
+    }
+
+    #[test]
+    fn bundle_path_uses_plist_executable() -> Result<()> {
+        let plist = plist::from_bytes::<InfoPlist>(
+            br#"<?xml version="1.0" encoding="UTF-8"?>
+            <plist version="1.0"><dict>
+            <key>CFBundleShortVersionString</key><string>0.3.0</string>
+            <key>CFBundleExecutable</key><string>rdg</string>
+            </dict></plist>"#,
+        )?;
+        let bundle = Bundle::App {
+            app_bundle: PathBuf::from("/Applications/Rdg Nightly.app"),
+            plist,
+        };
+        assert_eq!(
+            InstalledApp::path(&bundle),
+            PathBuf::from("/Applications/Rdg Nightly.app/Contents/MacOS/rdg")
+        );
+        Ok(())
     }
 
     enum Bundle {
@@ -1566,12 +1625,7 @@ mod mac_os {
             ipc_url: String,
             user_data_dir: Option<&str>,
         ) -> io::Result<ExitStatus> {
-            let path = match self {
-                Bundle::App { app_bundle, .. } => app_bundle.join("Contents/MacOS/zed"),
-                Bundle::LocalPath { executable, .. } => executable.clone(),
-            };
-
-            let mut cmd = std::process::Command::new(path);
+            let mut cmd = std::process::Command::new(self.executable_path());
             cmd.arg(ipc_url);
             if let Some(dir) = user_data_dir {
                 cmd.arg("--user-data-dir").arg(dir);
@@ -1580,14 +1634,22 @@ mod mac_os {
         }
 
         fn path(&self) -> PathBuf {
-            match self {
-                Bundle::App { app_bundle, .. } => app_bundle.join("Contents/MacOS/zed"),
-                Bundle::LocalPath { executable, .. } => executable.clone(),
-            }
+            self.executable_path()
         }
     }
 
     impl Bundle {
+        fn executable_path(&self) -> PathBuf {
+            match self {
+                Self::App {
+                    app_bundle, plist, ..
+                } => app_bundle
+                    .join("Contents/MacOS")
+                    .join(&plist.bundle_executable),
+                Self::LocalPath { executable, .. } => executable.clone(),
+            }
+        }
+
         fn version(&self) -> String {
             match self {
                 Self::App { plist, .. } => plist.bundle_short_version_string.clone(),

@@ -120,6 +120,10 @@ impl OpenRequest {
         this.dev_container = request.dev_container;
         this.open_behavior = request.open_behavior;
         for url in request.urls {
+            let url = url
+                .strip_prefix("rdg://")
+                .map(|remainder| format!("zed://{remainder}"))
+                .unwrap_or(url);
             if let Some(server_name) = url.strip_prefix("zed-cli://") {
                 this.kind = Some(OpenRequestKind::CliConnection(connect_to_cli(server_name)?));
             } else if let Some(action_index) = url.strip_prefix("zed-dock-action://") {
@@ -1344,7 +1348,14 @@ mod tests {
     fn test_parse_focus_app_url(cx: &mut TestAppContext) {
         let _app_state = init_test(cx);
 
-        for url in ["zed://", "zed://open", "zed://open/"] {
+        for url in [
+            "zed://",
+            "zed://open",
+            "zed://open/",
+            "rdg://",
+            "rdg://open",
+            "rdg://open/",
+        ] {
             let request = cx.update(|cx| {
                 OpenRequest::parse(
                     RawOpenRequest {
@@ -1365,6 +1376,22 @@ mod tests {
                 "expected is_focus_app_only for {url}"
             );
         }
+    }
+
+    #[gpui::test]
+    fn test_parse_rdg_file_url(cx: &mut TestAppContext) {
+        let _app_state = init_test(cx);
+        let request = cx.update(|cx| {
+            OpenRequest::parse(
+                RawOpenRequest {
+                    urls: vec!["rdg://file/tmp/a%20file".into()],
+                    ..Default::default()
+                },
+                cx,
+            )
+            .unwrap()
+        });
+        assert_eq!(request.open_paths, vec!["/tmp/a file"]);
     }
 
     #[gpui::test]

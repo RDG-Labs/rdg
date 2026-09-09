@@ -83,13 +83,13 @@ let
   gpu-lib = if withGLES then libglvnd else vulkan-loader;
   commonArgs =
     let
-      zedCargoLock = builtins.fromTOML (builtins.readFile ../crates/rdg/Cargo.toml);
+      rdgCargoLock = builtins.fromTOML (builtins.readFile ../crates/rdg/Cargo.toml);
       stdenv' = stdenv;
     in
     rec {
-      pname = "zed-editor";
+      pname = "rdg";
       version =
-        zedCargoLock.package.version
+        rdgCargoLock.package.version
         + "-nightly"
         + lib.optionalString (commitSha != null) "+${builtins.substring 0 7 commitSha}";
       src = builtins.path {
@@ -140,29 +140,7 @@ let
       ++ lib.optionals stdenv'.hostPlatform.isDarwin [
         # Provides `ld64.lld` for clang's `-fuse-ld=lld`.
         lld
-        (cargo-bundle.overrideAttrs (
-          new: old: {
-            version = "0.6.1-zed";
-            src = fetchFromGitHub {
-              owner = "zed-industries";
-              repo = "cargo-bundle";
-              rev = "2be2669972dff3ddd4daf89a2cb29d2d06cad7c7";
-              hash = "sha256-cSvW0ND148AGdIGWg/ku0yIacVgW+9f1Nsi+kAQxVrI=";
-            };
-            cargoHash = "sha256-urn+A3yuw2uAO4HGmvQnKvWtHqvG9KHxNCCWTiytE4k=";
-
-            # NOTE: can drop once upstream uses `finalAttrs` here:
-            # https://github.com/NixOS/nixpkgs/blob/10214747f5e6e7cb5b9bdf9e018a3c7b3032f5af/pkgs/build-support/rust/build-rust-package/default.nix#L104
-            #
-            # See (for context): https://github.com/NixOS/nixpkgs/pull/382550
-            cargoDeps = rustPlatform.fetchCargoVendor {
-              inherit (new) src;
-              hash = new.cargoHash;
-              patches = new.cargoPatches or [ ];
-              name = new.cargoDepsName or new.finalPackage.name;
-            };
-          }
-        ))
+        cargo-bundle
       ];
 
       buildInputs = [
@@ -202,7 +180,7 @@ let
         (darwinMinVersionHook "10.15")
       ];
 
-      cargoExtraArgs = "-p zed -p cli --locked --features=gpui_platform/runtime_shaders";
+      cargoExtraArgs = "-p rdg -p cli --locked --features=gpui_platform/runtime_shaders";
 
       stdenv =
         pkgs:
@@ -347,7 +325,7 @@ craneLib.buildPackage (
 
           # Physical location of the CLI must be inside the app bundle as this is used
           # to determine which app to start
-          ln -s "$out/Applications/Rdg Nightly.app/Contents/MacOS/cli" $out/bin/zed
+          ln -s "$out/Applications/Rdg Nightly.app/Contents/MacOS/cli" $out/bin/rdg
 
           runHook postInstall
         ''
@@ -356,26 +334,27 @@ craneLib.buildPackage (
           runHook preInstall
 
           mkdir -p $out/bin $out/libexec
-          cp $TARGET_DIR/zed $out/libexec/zed-editor
-          cp $TARGET_DIR/cli  $out/bin/zed
-          ln -s $out/bin/zed $out/bin/zeditor  # home-manager expects the CLI binary to be here
+          cp $TARGET_DIR/rdg $out/libexec/rdg
+          cp $TARGET_DIR/cli $out/bin/rdg
 
 
           install -D "crates/rdg/resources/app-icon-nightly@2x.png" \
-            "$out/share/icons/hicolor/1024x1024@2x/apps/zed.png"
+            "$out/share/icons/hicolor/1024x1024@2x/apps/rdg.png"
           install -D crates/rdg/resources/app-icon-nightly.png \
-            $out/share/icons/hicolor/512x512/apps/zed.png
+            $out/share/icons/hicolor/512x512/apps/rdg.png
 
-          # TODO: icons should probably be named "zed-nightly"
           (
             export DO_STARTUP_NOTIFY="true"
-            export APP_CLI="zed"
-            export APP_ICON="zed"
+            export APP_CLI="rdg"
+            export APP_ICON="rdg"
             export APP_NAME="Rdg Nightly"
             export APP_ARGS="%U"
             mkdir -p "$out/share/applications"
-            ${lib.getExe envsubst} < "crates/rdg/resources/rdg.desktop.in" > "$out/share/applications/dev.zed.Rdg-Nightly.desktop"
-            chmod +x "$out/share/applications/dev.zed.Rdg-Nightly.desktop"
+            ${lib.getExe envsubst} < "crates/rdg/resources/rdg.desktop.in" \
+              | sed -e 's/Keywords=zed;/Keywords=rdg;/' \
+                -e 's#x-scheme-handler/zed#x-scheme-handler/rdg#' \
+              > "$out/share/applications/dev.rdg.Rdg-Nightly.desktop"
+            chmod +x "$out/share/applications/dev.rdg.Rdg-Nightly.desktop"
           )
 
           runHook postInstall
@@ -383,15 +362,15 @@ craneLib.buildPackage (
 
     # TODO: why isn't this also done on macOS?
     postFixup = lib.optionalString stdenv.hostPlatform.isLinux ''
-      wrapProgram $out/libexec/zed-editor --suffix PATH : ${lib.makeBinPath [ nodejs_22 ]}
+      wrapProgram $out/libexec/rdg --suffix PATH : ${lib.makeBinPath [ nodejs_22 ]}
     '';
 
     meta = {
-      description = "High-performance, multiplayer code editor from the creators of Atom and Tree-sitter";
-      homepage = "https://zed.dev";
-      changelog = "https://zed.dev/releases/preview";
+      description = "High-performance code editor built around a tiled terminal workspace";
+      homepage = "https://github.com/RDG-Labs/rdg";
+      changelog = "https://github.com/RDG-Labs/rdg/releases";
       license = lib.licenses.gpl3Only;
-      mainProgram = "zed";
+      mainProgram = "rdg";
       platforms = lib.platforms.linux ++ lib.platforms.darwin;
     };
   }
