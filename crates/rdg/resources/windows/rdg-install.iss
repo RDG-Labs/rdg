@@ -50,6 +50,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "{#ResourcesDir}\rdg.exe"; DestDir: "{code:GetInstallDir}"; Flags: ignoreversion
 Source: "{#ResourcesDir}\conpty.dll"; DestDir: "{code:GetInstallDir}"; Flags: ignoreversion
+Source: "{#ResourcesDir}\OpenConsole.exe"; DestDir: "{code:GetInstallDir}"; Flags: ignoreversion
 Source: "{#ResourcesDir}\tools\*"; DestDir: "{app}\tools"; Flags: ignoreversion
 
 [Icons]

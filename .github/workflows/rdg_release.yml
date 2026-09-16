@@ -616,6 +616,7 @@ jobs:
         uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
         with:
           cache-targets: true
+          cache-on-failure: true
 
       - name: Setup sccache
         shell: pwsh
@@ -629,6 +630,21 @@ jobs:
 
       - name: Build Rdg and update helper
         run: cargo build --release --package rdg --package auto_update_helper
+
+      - name: Show sccache stats
+        if: always()
+        shell: pwsh
+        run: |
+          if (Get-Command sccache -ErrorAction SilentlyContinue) {
+            & sccache --show-stats
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "Unable to read sccache statistics"
+            }
+          }
+
+      - name: Prepare Windows terminal runtime
+        shell: pwsh
+        run: ./script/download-conpty.ps1 -Architecture x64 -TargetDir target
 
       - name: Package Rdg (portable zip and Inno installer)
         shell: pwsh
@@ -644,9 +660,10 @@ jobs:
 
           foreach ($file in @("conpty.dll", "OpenConsole.exe")) {
               $source = "target\$file"
-              if (Test-Path $source) {
-                  Copy-Item $source "$stage\$file"
+              if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+                  throw "Missing required Windows runtime file: $source"
               }
+              Copy-Item -LiteralPath $source "$stage\$file"
           }
 
           $iconName = if ($env:RELEASE_CHANNEL -eq "stable") { "app-icon.ico" } else { "app-icon-preview.ico" }
