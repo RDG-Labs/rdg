@@ -61,6 +61,11 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\rdg.exe"; Tasks: desktopicon;
 Filename: "{app}\rdg.exe"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+function SwitchHasValue(Name: string; Value: string): Boolean;
+begin
+  Result := CompareText(ExpandConstant('{param:' + Name + '}'), Value) = 0;
+end;
+
 function IsUpdating(): Boolean;
 begin
   Result := SwitchHasValue('update', 'true') and WizardSilent();
