@@ -218,7 +218,10 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && 'main' || github.sha }}
+          # Build the exact revision that supplied this workflow. Using the
+          # moving main branch can check out a different commit than the
+          # workflow file, especially immediately after a push.
+          ref: ${{ github.sha }}
 
       - name: Bump version and push main
         id: commit
@@ -644,7 +647,7 @@ jobs:
 
       - name: Prepare Windows terminal runtime
         shell: pwsh
-        run: ./script/download-conpty.ps1 -Architecture x64 -TargetDir target
+        run: '& .\script\download-conpty.ps1 -Architecture x64 -TargetDir target'
 
       - name: Package Rdg (portable zip and Inno installer)
         shell: pwsh
