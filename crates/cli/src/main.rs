@@ -31,7 +31,9 @@ use walkdir::WalkDir;
 
 use std::io::IsTerminal;
 
-const URL_PREFIX: [&'static str; 5] = ["zed://", "http://", "https://", "file://", "ssh://"];
+const URL_PREFIX: [&'static str; 6] = [
+    "zed://", "rdg://", "http://", "https://", "file://", "ssh://",
+];
 
 struct Detect;
 
@@ -272,7 +274,10 @@ fn parse_control_request(arguments: &[String]) -> Result<cli::ControlRequest> {
         }),
         "report" => {
             let worker_id = control_id(arguments.first().context("report requires a worker id")?)?;
-            let status = arguments.get(1).context("report requires a status")?.clone();
+            let status = arguments
+                .get(1)
+                .context("report requires a status")?
+                .clone();
             let summary = (!arguments[2..].is_empty()).then(|| arguments[2..].join(" "));
             Ok(cli::ControlRequest::Report {
                 group_id,
@@ -665,7 +670,7 @@ fn run() -> Result<()> {
 
     let (server, server_name) =
         IpcOneShotServer::<IpcHandshake>::new().context("Handshake before Zed spawn")?;
-    let url = format!("zed-cli://{server_name}");
+    let url = format!("rdg-cli://{server_name}");
 
     let open_behavior = if args.new {
         cli::OpenBehavior::AlwaysNew
@@ -830,7 +835,9 @@ fn run() -> Result<()> {
                 while let Ok(response) = rx.recv() {
                     match response {
                         CliResponse::Ping => {}
-                        CliResponse::Control(response) => println!("{}", serde_json::to_string(&response)?),
+                        CliResponse::Control(response) => {
+                            println!("{}", serde_json::to_string(&response)?)
+                        }
                         CliResponse::Stdout { message } => println!("{message}"),
                         CliResponse::Stderr { message } => eprintln!("{message}"),
                         CliResponse::Exit { status } => {
@@ -1518,12 +1525,11 @@ mod mac_os {
                         "zed-{}.sock",
                         *release_channel::RELEASE_CHANNEL_NAME
                     ));
-                    let send_result = std::os::unix::net::UnixDatagram::unbound().and_then(
-                        |socket| {
+                    let send_result =
+                        std::os::unix::net::UnixDatagram::unbound().and_then(|socket| {
                             socket.connect(&socket_path)?;
                             socket.send(url.as_bytes()).map(|_| ())
-                        },
-                    );
+                        });
                     match send_result {
                         Ok(()) => return Ok(()),
                         Err(error) => {
