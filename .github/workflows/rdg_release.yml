@@ -645,9 +645,55 @@ jobs:
             }
           }
 
+      # Keep this inline: retry builds check out the release branch, which may
+      # predate any helper script added on main.
       - name: Prepare Windows terminal runtime
         shell: pwsh
-        run: '& .\script\download-conpty.ps1 -Architecture x64 -TargetDir target'
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ProgressPreference = "SilentlyContinue"
+
+          $targetDir = (Resolve-Path -LiteralPath "target").Path
+          $conptyTarget = Join-Path $targetDir "conpty.dll"
+          $openConsoleTarget = Join-Path $targetDir "OpenConsole.exe"
+          if ((Test-Path -LiteralPath $conptyTarget -PathType Leaf) -and
+              (Test-Path -LiteralPath $openConsoleTarget -PathType Leaf)) {
+            Write-Host "Windows terminal runtime already present"
+            exit 0
+          }
+
+          $releaseTag = "v1.24.10621.0"
+          $archiveName = "Microsoft.Windows.Console.ConPTY.1.24.260303001.nupkg"
+          $url = "https://github.com/microsoft/terminal/releases/download/$releaseTag/$archiveName"
+          $tempDir = Join-Path $env:TEMP ("rdg-conpty-" + [Guid]::NewGuid().ToString("N"))
+          $archivePath = Join-Path $tempDir "$archiveName.zip"
+          $extractDir = Join-Path $tempDir "extracted"
+
+          try {
+            New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+            Invoke-WebRequest -Uri $url -OutFile $archivePath
+            Expand-Archive -LiteralPath $archivePath -DestinationPath $extractDir -Force
+
+            $conptySource = Join-Path $extractDir "runtimes\win-x64\native\conpty.dll"
+            $openConsoleSource = Join-Path $extractDir "build\native\runtimes\x64\OpenConsole.exe"
+            foreach ($source in @($conptySource, $openConsoleSource)) {
+              if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+                throw "ConPTY package is missing expected file: $source"
+              }
+            }
+
+            Copy-Item -LiteralPath $conptySource -Destination $conptyTarget -Force
+            Copy-Item -LiteralPath $openConsoleSource -Destination $openConsoleTarget -Force
+          }
+          finally {
+            Remove-Item -LiteralPath $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+          foreach ($requiredFile in @($conptyTarget, $openConsoleTarget)) {
+            if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
+              throw "Failed to prepare Windows terminal runtime: $requiredFile"
+            }
+          }
 
       - name: Package Rdg (portable zip and Inno installer)
         shell: pwsh
