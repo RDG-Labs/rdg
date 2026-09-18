@@ -42,7 +42,7 @@ jobs:
   deploy_docs:
     if: github.repository_owner == 'zed-industries'
     name: Build and Deploy Docs
-    runs-on: namespace-profile-16x32-ubuntu-2204
+    runs-on: blacksmith-16vcpu-ubuntu-2204
     env:
       DOCS_AMPLITUDE_API_KEY: ${{ secrets.DOCS_AMPLITUDE_API_KEY }}
       DOCS_CONSENT_IO_INSTANCE: ${{ secrets.DOCS_CONSENT_IO_INSTANCE }}
